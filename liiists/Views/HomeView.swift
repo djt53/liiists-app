@@ -63,6 +63,7 @@ struct HomeView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .contentMargins(.top, 12, for: .scrollContent)
         .navigationDestination(for: UUID.self) { listId in
             if let list = store.lists.first(where: { $0.id == listId }) {
                 ListView(list: list)

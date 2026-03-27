@@ -4,6 +4,8 @@ struct ListView: View {
     @EnvironmentObject private var store: ListStore
     @State private var list: ItemList
     @State private var newItemText = ""
+    @State private var showRename = false
+    @State private var renameText = ""
     @FocusState private var isAddFieldFocused: Bool
 
     init(list: ItemList) {
@@ -12,16 +14,7 @@ struct ListView: View {
 
     var body: some View {
         List {
-            // Items
-            ForEach($list.items) { $item in
-                ItemRow(item: $item, listType: list.type) {
-                    Theme.lightHaptic()
-                }
-            }
-            .onDelete(perform: deleteItems)
-            .onMove(perform: moveItems)
-
-            // Inline add field
+            // Inline add field at top
             Section {
                 HStack(spacing: 12) {
                     if list.type == .checklist {
@@ -35,14 +28,42 @@ struct ListView: View {
                         .onSubmit(addItem)
                 }
             }
+
+            // Items — newest at top
+            ForEach($list.items) { $item in
+                ItemRow(item: $item, listType: list.type) {
+                    Theme.lightHaptic()
+                }
+            }
+            .onDelete(perform: deleteItems)
+            .onMove(perform: moveItems)
         }
         .listStyle(.insetGrouped)
         .navigationTitle(list.title)
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                EditButton()
+                Menu {
+                    Button {
+                        renameText = list.title
+                        showRename = true
+                    } label: {
+                        Label("Rename List", systemImage: "pencil")
+                    }
+                    EditButton()
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
             }
+        }
+        .alert("Rename List", isPresented: $showRename) {
+            TextField("List name", text: $renameText)
+            Button("Save") {
+                let trimmed = renameText.trimmingCharacters(in: .whitespaces)
+                guard !trimmed.isEmpty else { return }
+                store.rename(&list, to: trimmed)
+            }
+            Button("Cancel", role: .cancel) {}
         }
         .onChange(of: list) { _, newValue in
             store.update(newValue)
@@ -52,7 +73,7 @@ struct ListView: View {
     private func addItem() {
         let text = newItemText.trimmingCharacters(in: .whitespaces)
         guard !text.isEmpty else { return }
-        list.items.append(ListItem(text: text))
+        list.items.insert(ListItem(text: text), at: 0)
         Theme.lightHaptic()
         newItemText = ""
         isAddFieldFocused = true

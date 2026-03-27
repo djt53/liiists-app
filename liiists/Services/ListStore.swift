@@ -62,6 +62,23 @@ final class ListStore: ObservableObject {
         try? content.write(to: url, atomically: true, encoding: .utf8)
     }
 
+    func rename(_ list: inout ItemList, to newTitle: String) {
+        // Delete old file
+        let oldURL = listsDirectory.appendingPathComponent(list.filename)
+        try? fileManager.removeItem(at: oldURL)
+
+        // Update model
+        list.title = newTitle
+        list.filename = ItemList.filenameFromTitle(newTitle)
+
+        // Save new file and update array
+        save(list)
+        if let idx = lists.firstIndex(where: { $0.id == list.id }) {
+            lists[idx] = list
+        }
+        lists.sort { $0.title < $1.title }
+    }
+
     func update(_ list: ItemList) {
         save(list)
         if let idx = lists.firstIndex(where: { $0.id == list.id }) {
