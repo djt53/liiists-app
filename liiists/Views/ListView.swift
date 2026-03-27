@@ -14,24 +14,29 @@ struct ListView: View {
         List {
             // Items
             ForEach($list.items) { $item in
-                ItemRow(item: $item, listType: list.type)
+                ItemRow(item: $item, listType: list.type) {
+                    Theme.lightHaptic()
+                }
             }
             .onDelete(perform: deleteItems)
             .onMove(perform: moveItems)
 
-            // Add item field
-            HStack(spacing: 12) {
-                if list.type == .checklist {
-                    Image(systemName: "circle")
-                        .foregroundStyle(.tertiary)
+            // Inline add field
+            Section {
+                HStack(spacing: 12) {
+                    if list.type == .checklist {
+                        Image(systemName: "circle")
+                            .font(.system(size: Theme.checkboxSize * 0.6))
+                            .foregroundStyle(.quaternary)
+                    }
+                    TextField("Add item…", text: $newItemText)
+                        .focused($isAddFieldFocused)
+                        .submitLabel(.done)
+                        .onSubmit(addItem)
                 }
-                TextField("Add item…", text: $newItemText)
-                    .focused($isAddFieldFocused)
-                    .onSubmit(addItem)
             }
-            .listRowSeparator(.hidden)
         }
-        .listStyle(.plain)
+        .listStyle(.insetGrouped)
         .navigationTitle(list.title)
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
@@ -48,6 +53,7 @@ struct ListView: View {
         let text = newItemText.trimmingCharacters(in: .whitespaces)
         guard !text.isEmpty else { return }
         list.items.append(ListItem(text: text))
+        Theme.lightHaptic()
         newItemText = ""
         isAddFieldFocused = true
     }
@@ -66,22 +72,47 @@ struct ListView: View {
 struct ItemRow: View {
     @Binding var item: ListItem
     let listType: ItemList.ListType
+    var onToggle: (() -> Void)?
 
     var body: some View {
         HStack(spacing: 12) {
             if listType == .checklist {
                 Button {
-                    item.isChecked.toggle()
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        item.isChecked.toggle()
+                    }
+                    onToggle?()
                 } label: {
-                    Image(systemName: item.isChecked ? "checkmark.circle.fill" : "circle")
-                        .foregroundStyle(item.isChecked ? .green : .secondary)
+                    checkboxIcon
                 }
                 .buttonStyle(.plain)
             }
 
             Text(item.text)
-                .strikethrough(listType == .checklist && item.isChecked)
+                .font(.body)
                 .foregroundStyle(listType == .checklist && item.isChecked ? .secondary : .primary)
+                .strikethrough(listType == .checklist && item.isChecked, color: .secondary)
+        }
+        .frame(minHeight: Theme.rowMinHeight)
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            Button(role: .destructive) {
+                // Handled by .onDelete
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var checkboxIcon: some View {
+        if item.isChecked {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: Theme.checkboxSize))
+                .foregroundStyle(Theme.accent)
+        } else {
+            Circle()
+                .strokeBorder(.tertiary, lineWidth: Theme.checkboxStroke)
+                .frame(width: Theme.checkboxSize, height: Theme.checkboxSize)
         }
     }
 }

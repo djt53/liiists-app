@@ -4,6 +4,7 @@ struct HomeView: View {
     @EnvironmentObject private var store: ListStore
     @State private var showNewList = false
     @State private var newListTitle = ""
+    @State private var newListType: ItemList.ListType = .list
 
     var body: some View {
         NavigationStack {
@@ -13,7 +14,7 @@ struct HomeView: View {
                 } else if store.lists.isEmpty {
                     EmptyStateView(onCreateList: { showNewList = true })
                 } else {
-                    listGrid
+                    listsView
                 }
             }
             .navigationTitle("liiists")
@@ -28,35 +29,40 @@ struct HomeView: View {
                     }
                 }
             }
-            .alert("New List", isPresented: $showNewList) {
-                TextField("List name", text: $newListTitle)
-                Button("Create") {
-                    guard !newListTitle.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-                    _ = store.create(title: newListTitle.trimmingCharacters(in: .whitespaces))
-                    newListTitle = ""
-                }
-                Button("Cancel", role: .cancel) {
-                    newListTitle = ""
-                }
+            .sheet(isPresented: $showNewList) {
+                NewListSheet(
+                    title: $newListTitle,
+                    listType: $newListType,
+                    onCreate: {
+                        let trimmed = newListTitle.trimmingCharacters(in: .whitespaces)
+                        guard !trimmed.isEmpty else { return }
+                        _ = store.create(title: trimmed, type: newListType)
+                        Theme.mediumHaptic()
+                        newListTitle = ""
+                        newListType = .list
+                        showNewList = false
+                    }
+                )
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
             }
         }
     }
 
-    private var listGrid: some View {
-        ScrollView {
-            LazyVGrid(
-                columns: [GridItem(.flexible()), GridItem(.flexible())],
-                spacing: 16
-            ) {
-                ForEach(store.lists) { list in
-                    NavigationLink(value: list.id) {
-                        ListCard(list: list)
-                    }
-                    .buttonStyle(.plain)
+    private var listsView: some View {
+        List {
+            ForEach(store.lists) { list in
+                NavigationLink(value: list.id) {
+                    ListRow(list: list)
                 }
             }
-            .padding()
+            .onDelete { offsets in
+                for index in offsets {
+                    store.delete(store.lists[index])
+                }
+            }
         }
+        .listStyle(.insetGrouped)
         .navigationDestination(for: UUID.self) { listId in
             if let list = store.lists.first(where: { $0.id == listId }) {
                 ListView(list: list)
@@ -65,38 +71,84 @@ struct HomeView: View {
     }
 }
 
-// MARK: - List Card
+// MARK: - List Row
 
-struct ListCard: View {
+struct ListRow: View {
     let list: ItemList
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(list.title)
-                .font(.headline)
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
+        HStack(spacing: 12) {
+            // Type icon
+            Image(systemName: list.type == .checklist ? "checklist" : "list.bullet")
+                .font(.body)
+                .foregroundStyle(Theme.accent)
+                .frame(width: 28)
 
-            Spacer()
+            VStack(alignment: .leading, spacing: 2) {
+                Text(list.title)
+                    .font(.body)
 
-            HStack {
-                if list.type == .checklist {
-                    Text("\(list.checkedCount)/\(list.itemCount)")
-                        .font(.caption)
+                if list.type == .checklist && list.itemCount > 0 {
+                    Text("\(list.checkedCount) of \(list.itemCount)")
+                        .font(.footnote)
                         .foregroundStyle(.secondary)
-                } else {
+                } else if list.itemCount > 0 {
                     Text("\(list.itemCount) items")
-                        .font(.caption)
+                        .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
-                Spacer()
-                Image(systemName: list.type == .checklist ? "checklist" : "list.bullet")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
             }
         }
-        .padding()
-        .frame(maxWidth: .infinity, minHeight: 100, alignment: .topLeading)
-        .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 12))
+        .frame(minHeight: Theme.rowMinHeight)
+    }
+}
+
+// MARK: - New List Sheet
+
+struct NewListSheet: View {
+    @Binding var title: String
+    @Binding var listType: ItemList.ListType
+    var onCreate: () -> Void
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("List name", text: $title)
+                        .font(.title2)
+                        .focused($isFocused)
+                        .submitLabel(.done)
+                        .onSubmit(onCreate)
+                }
+
+                Section {
+                    Picker("Type", selection: $listType) {
+                        Label("List", systemImage: "list.bullet")
+                            .tag(ItemList.ListType.list)
+                        Label("Checklist", systemImage: "checklist")
+                            .tag(ItemList.ListType.checklist)
+                    }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
+                }
+            }
+            .navigationTitle("New List")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        title = ""
+                        listType = .list
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Create", action: onCreate)
+                        .fontWeight(.semibold)
+                        .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+            .onAppear { isFocused = true }
+        }
     }
 }
