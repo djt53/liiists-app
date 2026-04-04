@@ -8,6 +8,8 @@ struct liiistsApp: App {
         WindowGroup {
             HomeView()
                 .environmentObject(store)
+                .preferredColorScheme(.dark)
+                .tint(Theme.ndAccent)
         }
     }
 }

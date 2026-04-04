@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ListView: View {
     @EnvironmentObject private var store: ListStore
+    @Environment(\.colorScheme) private var colorScheme
     @State private var list: ItemList
     @State private var newItemText = ""
     @State private var showRename = false
@@ -13,34 +14,63 @@ struct ListView: View {
     }
 
     var body: some View {
-        List {
-            // Inline add field at top
-            Section {
-                HStack(spacing: 12) {
-                    if list.type == .checklist {
-                        Image(systemName: "circle")
-                            .font(.system(size: Theme.checkboxSize * 0.6))
-                            .foregroundStyle(.quaternary)
-                    }
-                    TextField("Add item…", text: $newItemText)
-                        .focused($isAddFieldFocused)
-                        .submitLabel(.done)
-                        .onSubmit(addItem)
+        ScrollView {
+            // Title
+            HStack {
+                Text(list.title)
+                    .font(Theme.headingFont(size: Theme.headingSize, weight: .medium))
+                    .foregroundStyle(Theme.ndTextDisplay.resolve(for: colorScheme))
+                    .tracking(-0.01 * Theme.headingSize)
+                Spacer()
+            }
+            .padding(.horizontal, Theme.spaceMD)
+            .padding(.top, Theme.spaceLG)
+            .padding(.bottom, Theme.spaceMD)
+
+            // Add item field — underline style
+            HStack(spacing: Theme.spaceSM) {
+                if list.type == .checklist {
+                    Circle()
+                        .strokeBorder(Theme.ndBorderVisible.resolve(for: colorScheme).opacity(0.5), lineWidth: Theme.checkboxStroke)
+                        .frame(width: Theme.checkboxSize, height: Theme.checkboxSize)
                 }
+                TextField("Add item\u{2026}", text: $newItemText)
+                    .font(Theme.bodyFont())
+                    .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
+                    .focused($isAddFieldFocused)
+                    .submitLabel(.done)
+                    .onSubmit(addItem)
+            }
+            .padding(.horizontal, Theme.spaceMD)
+            .padding(.bottom, Theme.spaceSM)
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .frame(height: 1)
+                    .foregroundStyle(
+                        isAddFieldFocused
+                            ? Theme.ndTextPrimary.resolve(for: colorScheme)
+                            : Theme.ndBorder.resolve(for: colorScheme)
+                    )
+                    .padding(.horizontal, Theme.spaceMD)
             }
 
-            // Items — newest at top
-            ForEach($list.items) { $item in
-                ItemRow(item: $item, listType: list.type) {
-                    Theme.lightHaptic()
+            // Items
+            LazyVStack(spacing: 0) {
+                ForEach($list.items) { $item in
+                    ItemRow(item: $item, listType: list.type) {
+                        Theme.lightHaptic()
+                    }
+
+                    Divider()
+                        .overlay(Theme.ndBorder.resolve(for: colorScheme))
+                        .padding(.leading, list.type == .checklist ? Theme.spaceMD + Theme.checkboxSize + Theme.spaceSM : Theme.spaceMD)
+                        .padding(.trailing, Theme.spaceMD)
                 }
             }
-            .onDelete(perform: deleteItems)
-            .onMove(perform: moveItems)
+            .padding(.top, Theme.spaceSM)
         }
-        .listStyle(.insetGrouped)
-        .navigationTitle(list.title)
-        .navigationBarTitleDisplayMode(.large)
+        .background(Theme.ndBlack.resolve(for: colorScheme))
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
@@ -50,9 +80,10 @@ struct ListView: View {
                     } label: {
                         Label("Rename List", systemImage: "pencil")
                     }
-                    EditButton()
                 } label: {
-                    Image(systemName: "ellipsis.circle")
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 16, weight: .light))
+                        .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
                 }
             }
         }
@@ -78,14 +109,6 @@ struct ListView: View {
         newItemText = ""
         isAddFieldFocused = true
     }
-
-    private func deleteItems(at offsets: IndexSet) {
-        list.items.remove(atOffsets: offsets)
-    }
-
-    private func moveItems(from source: IndexSet, to destination: Int) {
-        list.items.move(fromOffsets: source, toOffset: destination)
-    }
 }
 
 // MARK: - Item Row
@@ -93,13 +116,14 @@ struct ListView: View {
 struct ItemRow: View {
     @Binding var item: ListItem
     let listType: ItemList.ListType
+    @Environment(\.colorScheme) private var colorScheme
     var onToggle: (() -> Void)?
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: Theme.spaceSM) {
             if listType == .checklist {
                 Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
+                    withAnimation(Theme.nothingEasing) {
                         item.isChecked.toggle()
                     }
                     onToggle?()
@@ -110,18 +134,21 @@ struct ItemRow: View {
             }
 
             Text(item.text)
-                .font(.body)
-                .foregroundStyle(listType == .checklist && item.isChecked ? .secondary : .primary)
-                .strikethrough(listType == .checklist && item.isChecked, color: .secondary)
+                .font(Theme.bodyFont())
+                .foregroundStyle(
+                    listType == .checklist && item.isChecked
+                        ? Theme.ndTextDisabled.resolve(for: colorScheme)
+                        : Theme.ndTextPrimary.resolve(for: colorScheme)
+                )
+                .strikethrough(
+                    listType == .checklist && item.isChecked,
+                    color: Theme.ndTextDisabled.resolve(for: colorScheme)
+                )
+
+            Spacer()
         }
         .frame(minHeight: Theme.rowMinHeight)
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-            Button(role: .destructive) {
-                // Handled by .onDelete
-            } label: {
-                Label("Delete", systemImage: "trash")
-            }
-        }
+        .padding(.horizontal, Theme.spaceMD)
     }
 
     @ViewBuilder
@@ -129,10 +156,10 @@ struct ItemRow: View {
         if item.isChecked {
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: Theme.checkboxSize))
-                .foregroundStyle(Theme.accent)
+                .foregroundStyle(Theme.ndSuccess)
         } else {
             Circle()
-                .strokeBorder(.tertiary, lineWidth: Theme.checkboxStroke)
+                .strokeBorder(Theme.ndBorderVisible.resolve(for: colorScheme), lineWidth: Theme.checkboxStroke)
                 .frame(width: Theme.checkboxSize, height: Theme.checkboxSize)
         }
     }
