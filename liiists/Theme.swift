@@ -57,17 +57,29 @@ enum Theme {
 
     /// Display — Doto, 36px+ only, tight tracking
     static func displayFont(size: CGFloat) -> Font {
-        .custom("Doto", size: max(size, 36))
+        .custom("Doto-Black_Regular", size: max(size, 36))
     }
 
     /// Heading — Space Grotesk
     static func headingFont(size: CGFloat, weight: Font.Weight = .medium) -> Font {
-        .custom("SpaceGrotesk-Regular", size: size).weight(weight)
+        let name: String
+        switch weight {
+        case .bold, .heavy, .black: name = "SpaceGrotesk-Light_Bold"
+        case .medium, .semibold: name = "SpaceGrotesk-Light_Medium"
+        default: name = "SpaceGrotesk-Light_Regular"
+        }
+        return .custom(name, size: size)
     }
 
     /// Body — Space Grotesk
     static func bodyFont(size: CGFloat = 16, weight: Font.Weight = .regular) -> Font {
-        .custom("SpaceGrotesk-Regular", size: size).weight(weight)
+        let name: String
+        switch weight {
+        case .bold, .heavy, .black: name = "SpaceGrotesk-Light_Bold"
+        case .medium, .semibold: name = "SpaceGrotesk-Light_Medium"
+        default: name = "SpaceGrotesk-Light_Regular"
+        }
+        return .custom(name, size: size)
     }
 
     /// Label — Space Mono, ALL CAPS, wide tracking
@@ -77,7 +89,9 @@ enum Theme {
 
     /// Data / monospace — Space Mono
     static func monoFont(size: CGFloat = 16, weight: Font.Weight = .regular) -> Font {
-        .custom("SpaceMono-Regular", size: size).weight(weight)
+        let name = (weight == .bold || weight == .heavy || weight == .black)
+            ? "SpaceMono-Bold" : "SpaceMono-Regular"
+        return .custom(name, size: size)
     }
 
     // MARK: - Type Scale
