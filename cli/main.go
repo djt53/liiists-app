@@ -31,6 +31,8 @@ func main() {
 		err = cmdRm(args)
 	case "check":
 		err = cmdCheck(args)
+	case "parse":
+		err = cmdParse(args)
 	case "help", "--help", "-h":
 		printUsage()
 	default:
@@ -56,6 +58,7 @@ usage:
   liiists ls <name>               show items in a list
   liiists rm <list> <item>        remove an item
   liiists check <list> <item>     toggle checkbox (checklists)
+  liiists parse [list]            parse messy text from stdin into items
 `)
 }
 
@@ -314,4 +317,104 @@ func cmdCheck(args []string) error {
 	}
 
 	return l.Write()
+}
+
+func cmdParse(args []string) error {
+	// Read from stdin
+	stat, _ := os.Stdin.Stat()
+	if (stat.Mode() & os.ModeCharDevice) != 0 {
+		return fmt.Errorf("pipe messy text via stdin: echo 'text' | liiists parse [list]")
+	}
+
+	var input strings.Builder
+	scanner := bufio.NewScanner(os.Stdin)
+	for scanner.Scan() {
+		input.WriteString(scanner.Text())
+		input.WriteString("\n")
+	}
+
+	items := parseMessyText(input.String())
+	if len(items) == 0 {
+		fmt.Println("no items parsed from input")
+		return nil
+	}
+
+	// If a list name was provided, add items to it
+	if len(args) >= 1 {
+		l, err := findList(args[0])
+		if err != nil {
+			return err
+		}
+		for _, text := range items {
+			l.Items = append(l.Items, Item{Text: text})
+			fmt.Printf("+ %s\n", text)
+		}
+		return l.Write()
+	}
+
+	// Otherwise just print parsed items
+	for _, text := range items {
+		fmt.Printf("- %s\n", text)
+	}
+	return nil
+}
+
+func parseMessyText(text string) []string {
+	lines := strings.Split(text, "\n")
+	var items []string
+
+	// If single non-empty line with commas, split on commas
+	nonEmpty := 0
+	singleLine := ""
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" {
+			nonEmpty++
+			singleLine = trimmed
+		}
+	}
+	if nonEmpty == 1 && strings.Contains(singleLine, ",") {
+		for _, part := range strings.Split(singleLine, ",") {
+			trimmed := strings.TrimSpace(part)
+			if trimmed != "" {
+				items = append(items, trimmed)
+			}
+		}
+		return items
+	}
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		// Strip numbered prefixes: 1. 1) 1:
+		for i, c := range line {
+			if c >= '0' && c <= '9' {
+				continue
+			}
+			if (c == '.' || c == ')' || c == ':') && i > 0 {
+				line = strings.TrimSpace(line[i+1:])
+			}
+			break
+		}
+
+		// Strip bullet prefixes: - * • – —
+		line = strings.TrimLeft(line, "-*\u2022\u2013\u2014 ")
+
+		// Strip checkbox prefixes: [ ] [x]
+		if strings.HasPrefix(line, "[ ] ") {
+			line = line[4:]
+		} else if strings.HasPrefix(line, "[x] ") {
+			line = line[4:]
+		}
+
+		line = strings.TrimSpace(line)
+		if line != "" {
+			items = append(items, line)
+		}
+	}
+
+	return items
 }
