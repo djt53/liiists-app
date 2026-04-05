@@ -11,10 +11,9 @@ final class ListStore: ObservableObject {
     private var listsDirectory: URL
 
     init() {
-        // Default to Documents/liiists — will move to iCloud container later
-        let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
-        self.listsDirectory = docs.appendingPathComponent("liiists", isDirectory: true)
-        ensureDirectory()
+        self.listsDirectory = SharedContainer.listsDirectory
+        SharedContainer.migrateIfNeeded()
+        SharedContainer.ensureDirectory()
         loadAll()
     }
 
@@ -92,11 +91,4 @@ final class ListStore: ObservableObject {
         lists.removeAll { $0.id == list.id }
     }
 
-    // MARK: - Private
-
-    private func ensureDirectory() {
-        if !fileManager.fileExists(atPath: listsDirectory.path) {
-            try? fileManager.createDirectory(at: listsDirectory, withIntermediateDirectories: true)
-        }
-    }
 }

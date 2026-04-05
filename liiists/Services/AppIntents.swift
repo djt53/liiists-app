@@ -150,12 +150,8 @@ struct IntentListStore {
     private let listsDirectory: URL
 
     init() {
-        let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
-        self.listsDirectory = docs.appendingPathComponent("liiists", isDirectory: true)
-
-        if !fileManager.fileExists(atPath: listsDirectory.path) {
-            try? fileManager.createDirectory(at: listsDirectory, withIntermediateDirectories: true)
-        }
+        self.listsDirectory = SharedContainer.listsDirectory
+        SharedContainer.ensureDirectory()
     }
 
     func loadAll() -> [ItemList] {

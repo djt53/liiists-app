@@ -10,7 +10,7 @@ settings:
   base:
     SWIFT_VERSION: "5.9"
     MARKETING_VERSION: "1.0.0"
-    CURRENT_PROJECT_VERSION: 3
+    CURRENT_PROJECT_VERSION: 4
     DEVELOPMENT_TEAM: 8HZAKZWFY8
     CODE_SIGN_STYLE: Automatic
 
@@ -37,6 +37,13 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
+    dependencies:
+      - target: ShareExtension
+    entitlements:
+      path: liiists/liiists.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.davidtingle.liiists
     settings:
       base:
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
@@ -47,6 +54,37 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ENABLE_PREVIEWS: YES
         PRODUCT_BUNDLE_IDENTIFIER: com.davidtingle.liiists
+
+  ShareExtension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - ShareExtension
+      - path: liiists/Models
+        group: Shared
+      - path: liiists/Services/MarkdownParser.swift
+        group: Shared
+      - path: liiists/Services/SharedContainer.swift
+        group: Shared
+    entitlements:
+      path: ShareExtension/ShareExtension.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.davidtingle.liiists
+    info:
+      path: ShareExtension/Info.plist
+      properties:
+        CFBundleDisplayName: liiists Share
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          NSExtensionActivationRule:
+            NSExtensionActivationSupportsText: true
+            NSExtensionActivationSupportsWebURLWithMaxCount: 1
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.davidtingle.liiists.ShareExtension
+        SKIP_INSTALL: YES
 
   liiistsTests:
     type: bundle.unit-test
