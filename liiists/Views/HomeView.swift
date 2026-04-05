@@ -20,19 +20,6 @@ struct HomeView: View {
                     listsView
                 }
             }
-            .toolbar {
-                if !store.lists.isEmpty {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button {
-                            showNewList = true
-                        } label: {
-                            Image(systemName: "plus")
-                                .font(.system(size: 18, weight: .light))
-                                .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
-                        }
-                    }
-                }
-            }
             .sheet(isPresented: $showNewList) {
                 NewListSheet(
                     title: $newListTitle,
@@ -54,32 +41,48 @@ struct HomeView: View {
     }
 
     private var listsView: some View {
-        ScrollView {
-            // Display title — Doto, hero-sized
-            HStack {
+        VStack(spacing: 0) {
+            // Display title + plus button
+            HStack(alignment: .center) {
                 Text("liiists")
                     .font(Theme.displayFont(size: Theme.displayLG))
                     .foregroundStyle(Theme.ndTextDisplay.resolve(for: colorScheme))
                     .tracking(-0.02 * Theme.displayLG)
                 Spacer()
+                Button {
+                    showNewList = true
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 20, weight: .light))
+                        .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
+                        .frame(width: 44, height: 44)
+                }
             }
             .padding(.horizontal, Theme.spaceMD)
-            .padding(.top, Theme.spaceXL)
+            .padding(.top, Theme.space3XL)
             .padding(.bottom, Theme.spaceLG)
 
             // List rows
-            LazyVStack(spacing: 0) {
+            List {
                 ForEach(store.lists) { list in
                     NavigationLink(value: list.id) {
                         ListRow(list: list)
                     }
-                    .buttonStyle(.plain)
-
-                    Divider()
-                        .overlay(Theme.ndBorder.resolve(for: colorScheme))
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 0, leading: Theme.spaceMD, bottom: 0, trailing: Theme.spaceMD))
+                    .listRowSeparatorTint(Theme.ndBorder.resolve(for: colorScheme))
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button(role: .destructive) {
+                            store.delete(list)
+                            Theme.mediumHaptic()
+                        } label: {
+                            Image(systemName: "trash")
+                        }
+                    }
                 }
             }
-            .padding(.horizontal, Theme.spaceMD)
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
         }
         .background(Theme.ndBlack.resolve(for: colorScheme))
         .navigationBarTitleDisplayMode(.inline)
@@ -99,24 +102,22 @@ struct ListRow: View {
 
     var body: some View {
         HStack(spacing: Theme.spaceSM) {
-            // Type icon — monoline, no fill
+            // Type icon
             Image(systemName: list.type == .checklist ? "checklist" : "list.bullet")
                 .font(.system(size: 16, weight: .light))
                 .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
                 .frame(width: 24)
 
-            VStack(alignment: .leading, spacing: Theme.spaceXS) {
-                Text(list.title)
-                    .font(Theme.bodyFont())
-                    .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
+            Text(list.title)
+                .font(Theme.bodyFont())
+                .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
 
-                if list.type == .checklist && list.itemCount > 0 {
-                    Text("\(list.checkedCount) OF \(list.itemCount)")
-                        .nothingLabel(color: Theme.ndTextSecondary.resolve(for: colorScheme))
-                } else if list.itemCount > 0 {
-                    Text("\(list.itemCount) ITEMS")
-                        .nothingLabel(color: Theme.ndTextSecondary.resolve(for: colorScheme))
-                }
+            if list.type == .checklist && list.itemCount > 0 {
+                Text("\(list.checkedCount)/\(list.itemCount)")
+                    .nothingLabel(color: Theme.ndTextSecondary.resolve(for: colorScheme))
+            } else if list.itemCount > 0 {
+                Text("\(list.itemCount)")
+                    .nothingLabel(color: Theme.ndTextSecondary.resolve(for: colorScheme))
             }
 
             Spacer()
@@ -134,6 +135,10 @@ struct NewListSheet: View {
     var onCreate: () -> Void
     @Environment(\.colorScheme) private var colorScheme
     @FocusState private var isFocused: Bool
+
+    private var isValid: Bool {
+        !title.trimmingCharacters(in: .whitespaces).isEmpty
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -158,25 +163,20 @@ struct NewListSheet: View {
                         .textCase(.uppercase)
                         .tracking(13 * 0.06)
                         .foregroundStyle(
-                            title.trimmingCharacters(in: .whitespaces).isEmpty
-                                ? Theme.ndTextDisabled.resolve(for: colorScheme)
-                                : Theme.ndTextDisplay.resolve(for: colorScheme)
+                            isValid
+                                ? Theme.ndBlack.resolve(for: colorScheme)
+                                : Theme.ndTextDisabled.resolve(for: colorScheme)
                         )
                         .padding(.horizontal, Theme.spaceLG)
                         .padding(.vertical, Theme.spaceSM)
                         .background(
-                            title.trimmingCharacters(in: .whitespaces).isEmpty
-                                ? Theme.ndSurfaceRaised.resolve(for: colorScheme)
-                                : Theme.ndTextDisplay.resolve(for: colorScheme)
-                        )
-                        .foregroundStyle(
-                            title.trimmingCharacters(in: .whitespaces).isEmpty
-                                ? Theme.ndTextDisabled.resolve(for: colorScheme)
-                                : Theme.ndBlack.resolve(for: colorScheme)
+                            isValid
+                                ? Theme.ndTextPrimary.resolve(for: colorScheme)
+                                : Theme.ndSurfaceRaised.resolve(for: colorScheme)
                         )
                         .clipShape(Capsule())
                 }
-                .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
+                .disabled(!isValid)
             }
             .padding(.horizontal, Theme.spaceMD)
             .padding(.top, Theme.spaceLG)

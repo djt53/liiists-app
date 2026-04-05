@@ -3,10 +3,12 @@ import SwiftUI
 struct ListView: View {
     @EnvironmentObject private var store: ListStore
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dismiss) private var dismiss
     @State private var list: ItemList
     @State private var newItemText = ""
     @State private var showRename = false
     @State private var renameText = ""
+    @State private var showDeleteConfirm = false
     @FocusState private var isAddFieldFocused: Bool
 
     init(list: ItemList) {
@@ -14,7 +16,7 @@ struct ListView: View {
     }
 
     var body: some View {
-        ScrollView {
+        VStack(spacing: 0) {
             // Title
             HStack {
                 Text(list.title)
@@ -34,12 +36,28 @@ struct ListView: View {
                         .strokeBorder(Theme.ndBorderVisible.resolve(for: colorScheme).opacity(0.5), lineWidth: Theme.checkboxStroke)
                         .frame(width: Theme.checkboxSize, height: Theme.checkboxSize)
                 }
-                TextField("Add item\u{2026}", text: $newItemText)
+                TextField("Add item\u{2026}", text: $newItemText, axis: .vertical)
                     .font(Theme.bodyFont())
                     .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
                     .focused($isAddFieldFocused)
+                    .lineLimit(1...5)
                     .submitLabel(.done)
                     .onSubmit(addItem)
+                    .onChange(of: newItemText) { _, newValue in
+                        // Multi-line paste: split into separate items
+                        if newValue.contains("\n") {
+                            let lines = newValue.components(separatedBy: "\n")
+                                .map { $0.trimmingCharacters(in: .whitespaces) }
+                                .filter { !$0.isEmpty }
+                            for line in lines {
+                                list.items.insert(ListItem(text: line), at: 0)
+                            }
+                            if !lines.isEmpty {
+                                Theme.lightHaptic()
+                            }
+                            newItemText = ""
+                        }
+                    }
             }
             .padding(.horizontal, Theme.spaceMD)
             .padding(.bottom, Theme.spaceSM)
@@ -55,23 +73,42 @@ struct ListView: View {
             }
 
             // Items
-            LazyVStack(spacing: 0) {
+            List {
                 ForEach($list.items) { $item in
                     ItemRow(item: $item, listType: list.type) {
                         Theme.lightHaptic()
                     }
-
-                    Divider()
-                        .overlay(Theme.ndBorder.resolve(for: colorScheme))
-                        .padding(.leading, list.type == .checklist ? Theme.spaceMD + Theme.checkboxSize + Theme.spaceSM : Theme.spaceMD)
-                        .padding(.trailing, Theme.spaceMD)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                    .listRowSeparatorTint(Theme.ndBorder.resolve(for: colorScheme))
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button(role: .destructive) {
+                            if let idx = list.items.firstIndex(where: { $0.id == item.id }) {
+                                list.items.remove(at: idx)
+                                Theme.lightHaptic()
+                            }
+                        } label: {
+                            Image(systemName: "trash")
+                        }
+                    }
                 }
             }
-            .padding(.top, Theme.spaceSM)
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
         }
         .background(Theme.ndBlack.resolve(for: colorScheme))
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
         .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 16, weight: .light))
+                        .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
+                }
+            }
             ToolbarItem(placement: .primaryAction) {
                 Menu {
                     Button {
@@ -79,6 +116,20 @@ struct ListView: View {
                         showRename = true
                     } label: {
                         Label("Rename List", systemImage: "pencil")
+                    }
+
+                    Button {
+                        shareListAsText()
+                    } label: {
+                        Label("Copy as Text", systemImage: "doc.on.doc")
+                    }
+
+                    Divider()
+
+                    Button(role: .destructive) {
+                        showDeleteConfirm = true
+                    } label: {
+                        Label("Delete List", systemImage: "trash")
                     }
                 } label: {
                     Image(systemName: "ellipsis")
@@ -96,6 +147,15 @@ struct ListView: View {
             }
             Button("Cancel", role: .cancel) {}
         }
+        .alert("Delete List?", isPresented: $showDeleteConfirm) {
+            Button("Delete", role: .destructive) {
+                store.delete(list)
+                dismiss()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will permanently delete \"\(list.title)\" and all its items.")
+        }
         .onChange(of: list) { _, newValue in
             store.update(newValue)
         }
@@ -108,6 +168,20 @@ struct ListView: View {
         Theme.lightHaptic()
         newItemText = ""
         isAddFieldFocused = true
+    }
+
+    private func shareListAsText() {
+        var lines = [list.title]
+        for item in list.items {
+            if list.type == .checklist {
+                let check = item.isChecked ? "[x]" : "[ ]"
+                lines.append("\(check) \(item.text)")
+            } else {
+                lines.append("- \(item.text)")
+            }
+        }
+        UIPasteboard.general.string = lines.joined(separator: "\n")
+        Theme.lightHaptic()
     }
 }
 
