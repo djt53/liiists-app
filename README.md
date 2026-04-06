@@ -1,6 +1,6 @@
 # liiists
 
-A dead-simple list app where markdown files are the source of truth. Every interface — iOS app, CLI, AI tools — reads and writes the same files.
+A dead-simple list app where markdown files are the source of truth. Every interface -iOS app, CLI, AI tools -reads and writes the same files.
 
 ## Why
 
@@ -8,9 +8,9 @@ List apps are either too simple or too complex. None are designed to work with A
 
 ## What's built
 
-**iOS app** — clean, native SwiftUI list app on [TestFlight](https://testflight.apple.com/). Create lists, check items off, search across everything. Syncs via iCloud Drive.
+**iOS app** -clean, native SwiftUI list app on [TestFlight](https://testflight.apple.com/). Create lists, check items off, search across everything. Syncs via iCloud Drive.
 
-**CLI** — manage lists from your terminal. Written in Go, zero dependencies.
+**CLI** -manage lists from your terminal. Written in Go, zero dependencies.
 
 ```bash
 liiists init                       # set up your lists directory
@@ -23,7 +23,7 @@ liiists rm books "Project Hail Mary"     # remove an item
 echo "messy, text, input" | liiists parse books  # parse text into items
 ```
 
-**MCP server** — lets AI assistants manage your lists programmatically. 8 tools: `list_lists`, `read_list`, `create_list`, `add_items`, `remove_item`, `check_item`, `delete_list`, `parse_text`.
+**MCP server** -lets AI assistants manage your lists programmatically. 8 tools: `list_lists`, `read_list`, `create_list`, `add_items`, `remove_item`, `check_item`, `delete_list`, `parse_text`.
 
 ```json
 {
@@ -36,9 +36,9 @@ echo "messy, text, input" | liiists parse books  # parse text into items
 }
 ```
 
-**Share Extension** — share a URL or text from any app into a list.
+**Share Extension** -share a URL or text from any app into a list.
 
-**Siri Shortcuts** — "Add Severance to my TV list."
+**Siri Shortcuts** -"Add Severance to my TV list."
 
 ## The format
 
@@ -57,14 +57,14 @@ created: 2026-03-26
 ```
 
 - `type` is `list` (plain bullets) or `checklist` (checkboxes)
-- Frontmatter is optional — a bare bullet list is a valid list
-- Title resolves from: frontmatter → H1 heading → filename
+- Frontmatter is optional -a bare bullet list is a valid list
+- Title resolves from: frontmatter > H1 heading > filename
 
 ## Architecture
 
 ```
 liiists/
-├── cli/              # Go CLI — single binary, fast
+├── cli/              # Go CLI -single binary, fast
 ├── mcp/              # Node.js MCP server
 ├── liiists/          # SwiftUI iOS app
 │   ├── Models/       # ItemList, ListItem
@@ -89,6 +89,10 @@ Or point it at any directory via `~/.config/liiists/config.yaml`:
 ```yaml
 lists_dir: ~/my-lists
 ```
+
+## Design
+
+The app's visual language is inspired by [Nothing's design system](https://nothing.tech) - monochromatic, dark-first, with dot-matrix typography (Doto) and Space Grotesk/Space Mono. Design system created by [Nothing Technology](https://nothing.tech).
 
 ## License
 
