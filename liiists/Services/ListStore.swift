@@ -70,6 +70,7 @@ final class ListStore: ObservableObject {
         save(list)
         lists.append(list)
         lists.sort { $0.title < $1.title }
+        Analytics.listCreated(title: title, type: type == .checklist ? "checklist" : "list")
         return list
     }
 
@@ -84,6 +85,7 @@ final class ListStore: ObservableObject {
     }
 
     func rename(_ list: inout ItemList, to newTitle: String) {
+        let oldTitle = list.title
         let oldURL = listsDirectory.appendingPathComponent(list.filename)
         let coordinator = NSFileCoordinator()
         var error: NSError?
@@ -99,6 +101,7 @@ final class ListStore: ObservableObject {
             lists[idx] = list
         }
         lists.sort { $0.title < $1.title }
+        Analytics.listRenamed(from: oldTitle, to: newTitle)
     }
 
     func update(_ list: ItemList) {
@@ -116,6 +119,7 @@ final class ListStore: ObservableObject {
             try? fileManager.removeItem(at: coordURL)
         }
         lists.removeAll { $0.id == list.id }
+        Analytics.listDeleted(title: list.title)
     }
 
     // MARK: - iCloud Monitoring

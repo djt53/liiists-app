@@ -14,6 +14,11 @@ settings:
     DEVELOPMENT_TEAM: 8HZAKZWFY8
     CODE_SIGN_STYLE: Automatic
 
+packages:
+  PostHog:
+    url: https://github.com/PostHog/posthog-ios
+    from: "3.0.0"
+
 targets:
   liiists:
     type: application
@@ -44,6 +49,7 @@ targets:
           - UIInterfaceOrientationLandscapeRight
     dependencies:
       - target: ShareExtension
+      - package: PostHog
     entitlements:
       path: liiists/liiists.entitlements
       properties:

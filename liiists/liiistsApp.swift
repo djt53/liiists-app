@@ -4,6 +4,10 @@ import SwiftUI
 struct liiistsApp: App {
     @StateObject private var store = ListStore()
 
+    init() {
+        Analytics.setup()
+    }
+
     var body: some Scene {
         WindowGroup {
             HomeView()
