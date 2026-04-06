@@ -10,13 +10,16 @@ struct ListView: View {
     @State private var renameText = ""
     @State private var showDeleteConfirm = false
     @State private var searchText = ""
+    @State private var showSearch = false
+    @State private var isAdding = false
     @FocusState private var isAddFieldFocused: Bool
+    @FocusState private var isSearchFocused: Bool
 
-    var focusAddField: Bool = false
+    var isNewList: Bool = false
 
     init(list: ItemList, focusAddField: Bool = false) {
         _list = State(initialValue: list)
-        self.focusAddField = focusAddField
+        self.isNewList = focusAddField
     }
 
     private var filteredItems: [ListItem] {
@@ -25,22 +28,50 @@ struct ListView: View {
         return list.items.filter { $0.text.lowercased().contains(query) }
     }
 
+    /// Whether to show the add-item field
+    private var addFieldVisible: Bool {
+        list.items.isEmpty || isAdding
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            // Title
-            HStack {
+            // Title + search/plus icons
+            HStack(alignment: .center) {
                 Text(list.title)
                     .font(Theme.headingFont(size: Theme.headingSize, weight: .medium))
                     .foregroundStyle(Theme.ndTextDisplay.resolve(for: colorScheme))
                     .tracking(-0.01 * Theme.headingSize)
                 Spacer()
+                Button {
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        showSearch.toggle()
+                        if showSearch {
+                            isSearchFocused = true
+                        } else {
+                            searchText = ""
+                        }
+                    }
+                } label: {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 16, weight: .light))
+                        .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
+                        .frame(width: 36, height: 36)
+                }
+                Button {
+                    startAdding()
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 16, weight: .light))
+                        .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
+                        .frame(width: 36, height: 36)
+                }
             }
             .padding(.horizontal, Theme.spaceMD)
             .padding(.top, Theme.spaceLG)
-            .padding(.bottom, Theme.spaceSM)
+            .padding(.bottom, showSearch ? Theme.spaceSM : Theme.spaceMD)
 
-            // Search bar
-            if list.items.count > 5 {
+            // Expandable search bar
+            if showSearch {
                 HStack(spacing: Theme.spaceSM) {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 14, weight: .light))
@@ -48,14 +79,14 @@ struct ListView: View {
                     TextField("Search\u{2026}", text: $searchText)
                         .font(Theme.bodyFont())
                         .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
-                    if !searchText.isEmpty {
-                        Button {
-                            searchText = ""
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 14))
-                                .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
-                        }
+                        .focused($isSearchFocused)
+                    Button {
+                        searchText = ""
+                        showSearch = false
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 14))
+                            .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
                     }
                 }
                 .padding(.horizontal, Theme.spaceMD)
@@ -66,47 +97,35 @@ struct ListView: View {
                 .padding(.bottom, Theme.spaceSM)
             }
 
-            // Add item field — underline style
-            HStack(spacing: Theme.spaceSM) {
-                if list.type == .checklist {
-                    Circle()
-                        .strokeBorder(Theme.ndBorderVisible.resolve(for: colorScheme).opacity(0.5), lineWidth: Theme.checkboxStroke)
-                        .frame(width: Theme.checkboxSize, height: Theme.checkboxSize)
-                }
-                TextField("Add item\u{2026}", text: $newItemText, axis: .vertical)
-                    .font(Theme.bodyFont())
-                    .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
-                    .focused($isAddFieldFocused)
-                    .lineLimit(1...5)
-                    .submitLabel(.done)
-                    .onSubmit(addItem)
-                    .onChange(of: newItemText) { _, newValue in
-                        // Multi-line paste: split into separate items
-                        if newValue.contains("\n") {
-                            let lines = newValue.components(separatedBy: "\n")
-                                .map { $0.trimmingCharacters(in: .whitespaces) }
-                                .filter { !$0.isEmpty }
-                            for line in lines {
-                                list.items.insert(ListItem(text: line), at: 0)
-                            }
-                            if !lines.isEmpty {
-                                Theme.lightHaptic()
-                            }
-                            newItemText = ""
-                        }
+            // Add item field
+            if addFieldVisible {
+                HStack(spacing: Theme.spaceSM) {
+                    if list.type == .checklist {
+                        Circle()
+                            .strokeBorder(Theme.ndBorderVisible.resolve(for: colorScheme).opacity(0.5), lineWidth: Theme.checkboxStroke)
+                            .frame(width: Theme.checkboxSize, height: Theme.checkboxSize)
                     }
-            }
-            .padding(.horizontal, Theme.spaceMD)
-            .padding(.bottom, Theme.spaceSM)
-            .overlay(alignment: .bottom) {
-                Rectangle()
-                    .frame(height: 1)
-                    .foregroundStyle(
-                        isAddFieldFocused
-                            ? Theme.ndTextPrimary.resolve(for: colorScheme)
-                            : Theme.ndBorder.resolve(for: colorScheme)
-                    )
-                    .padding(.horizontal, Theme.spaceMD)
+                    TextField("Add item\u{2026}", text: $newItemText)
+                        .font(Theme.bodyFont())
+                        .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
+                        .focused($isAddFieldFocused)
+                        .submitLabel(.next)
+                        .onSubmit {
+                            addItem()
+                        }
+                }
+                .padding(.horizontal, Theme.spaceMD)
+                .padding(.bottom, Theme.spaceSM)
+                .overlay(alignment: .bottom) {
+                    Rectangle()
+                        .frame(height: 1)
+                        .foregroundStyle(
+                            isAddFieldFocused
+                                ? Theme.ndTextPrimary.resolve(for: colorScheme)
+                                : Theme.ndBorder.resolve(for: colorScheme)
+                        )
+                        .padding(.horizontal, Theme.spaceMD)
+                }
             }
 
             // Items
@@ -213,20 +232,43 @@ struct ListView: View {
         .onChange(of: list) { _, newValue in
             store.update(newValue)
         }
+        .onChange(of: isAddFieldFocused) { _, focused in
+            if !focused && !isSubmitting && newItemText.trimmingCharacters(in: .whitespaces).isEmpty && !list.items.isEmpty {
+                isAdding = false
+            }
+        }
         .onAppear {
-            if focusAddField {
-                isAddFieldFocused = true
+            if isNewList || list.items.isEmpty {
+                startAdding()
             }
         }
     }
 
+    // MARK: - Add Item Logic
+
+    private func startAdding() {
+        isAdding = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            isAddFieldFocused = true
+        }
+    }
+
+    @State private var isSubmitting = false
+
     private func addItem() {
         let text = newItemText.trimmingCharacters(in: .whitespaces)
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty else {
+            return
+        }
+        isSubmitting = true
         list.items.insert(ListItem(text: text), at: 0)
         Theme.lightHaptic()
         newItemText = ""
-        isAddFieldFocused = true
+        isAdding = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            isAddFieldFocused = true
+            isSubmitting = false
+        }
     }
 
     private func shareListAsText() {
@@ -267,7 +309,7 @@ struct ItemRow: View {
                 .buttonStyle(.plain)
             }
 
-            TextField("", text: $item.text, axis: .vertical)
+            TextField("", text: $item.text)
                 .font(Theme.bodyFont())
                 .foregroundStyle(
                     listType == .checklist && item.isChecked
@@ -275,7 +317,7 @@ struct ItemRow: View {
                         : Theme.ndTextPrimary.resolve(for: colorScheme)
                 )
                 .focused($isEditing)
-                .lineLimit(1...10)
+                .submitLabel(.next)
 
             Spacer()
         }

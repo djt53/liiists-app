@@ -10,6 +10,7 @@ struct HomeView: View {
     @State private var newListType: ItemList.ListType = .list
     @State private var searchText = ""
     @State private var showSearch = false
+    @State private var animatingCharIndex: Int? = nil
     @FocusState private var isSearchFocused: Bool
 
     private var filteredLists: [ItemList] {
@@ -44,11 +45,16 @@ struct HomeView: View {
                     onCreate: {
                         let trimmed = newListTitle.trimmingCharacters(in: .whitespaces)
                         guard !trimmed.isEmpty else { return }
-                        _ = store.create(title: trimmed, type: newListType)
+                        let newList = store.create(title: trimmed, type: newListType)
                         Theme.mediumHaptic()
                         newListTitle = ""
                         newListType = .list
                         showNewList = false
+                        // Navigate to the new list
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            deepLinkFocusAdd = true
+                            path.append(newList.id)
+                        }
                     },
                     onCancel: {
                         showNewList = false
@@ -64,10 +70,18 @@ struct HomeView: View {
         VStack(spacing: 0) {
             // Display title + plus button
             HStack(alignment: .center) {
-                Text("liiists")
-                    .font(Theme.displayFont(size: Theme.displayLG))
-                    .foregroundStyle(Theme.ndTextDisplay.resolve(for: colorScheme))
-                    .tracking(-0.02 * Theme.displayLG)
+                HStack(spacing: -0.02 * Theme.displayLG) {
+                    let title = Array("liiists")
+                    ForEach(Array(title.enumerated()), id: \.offset) { index, char in
+                        Text(String(char))
+                            .font(Theme.displayFont(size: Theme.displayLG))
+                            .foregroundStyle(
+                                animatingCharIndex == index
+                                    ? Theme.ndAccent
+                                    : Theme.ndTextDisplay.resolve(for: colorScheme)
+                            )
+                    }
+                }
                 Spacer()
                 Button {
                     withAnimation(.easeOut(duration: 0.2)) {
@@ -152,6 +166,7 @@ struct HomeView: View {
             }
         }
         .background(Theme.ndBlack.resolve(for: colorScheme))
+        .onAppear { runTitleAnimation() }
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(for: UUID.self) { listId in
             if let list = store.lists.first(where: { $0.id == listId }) {
@@ -165,6 +180,25 @@ struct HomeView: View {
             path.append(list.id)
             navigationTarget = nil
             focusAddField = false
+        }
+    }
+
+    private func runTitleAnimation() {
+        let charCount = 6 // "liiists" = 7 chars, indices 0-6
+        let startDelay = 0.4
+        let perChar = 0.1
+
+        for i in 0...charCount {
+            DispatchQueue.main.asyncAfter(deadline: .now() + startDelay + Double(i) * perChar) {
+                withAnimation(.easeInOut(duration: 0.12)) {
+                    animatingCharIndex = i
+                }
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + startDelay + Double(charCount + 1) * perChar) {
+            withAnimation(.easeOut(duration: 0.2)) {
+                animatingCharIndex = nil
+            }
         }
     }
 }
