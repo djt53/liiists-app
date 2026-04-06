@@ -119,7 +119,9 @@ struct HomeView: View {
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .refreshable {
-                store.loadAll()
+                await Task { @MainActor in
+                    store.loadAll()
+                }.value
             }
         }
         .background(Theme.ndBlack.resolve(for: colorScheme))

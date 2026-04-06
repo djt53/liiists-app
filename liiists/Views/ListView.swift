@@ -133,10 +133,12 @@ struct ListView: View {
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .refreshable {
-                store.loadAll()
-                if let updated = store.lists.first(where: { $0.filename == list.filename }) {
-                    list = updated
-                }
+                await Task { @MainActor in
+                    store.loadAll()
+                    if let updated = store.lists.first(where: { $0.filename == list.filename }) {
+                        list = updated
+                    }
+                }.value
             }
         }
         .background(Theme.ndBlack.resolve(for: colorScheme))
