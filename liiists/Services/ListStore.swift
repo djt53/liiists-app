@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import WidgetKit
 
 /// Manages reading and writing ItemList markdown files from a directory.
 /// Monitors iCloud Drive for changes from other devices or Files.app.
@@ -82,6 +83,7 @@ final class ListStore: ObservableObject {
         coordinator.coordinate(writingItemAt: url, options: .forReplacing, error: &error) { coordURL in
             try? content.write(to: coordURL, atomically: true, encoding: .utf8)
         }
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     func rename(_ list: inout ItemList, to newTitle: String) {

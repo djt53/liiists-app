@@ -3,6 +3,8 @@ import SwiftUI
 struct HomeView: View {
     @EnvironmentObject private var store: ListStore
     @Environment(\.colorScheme) private var colorScheme
+    @Binding var navigationTarget: String?
+    @Binding var focusAddField: Bool
     @State private var showNewList = false
     @State private var newListTitle = ""
     @State private var newListType: ItemList.ListType = .list
@@ -19,8 +21,11 @@ struct HomeView: View {
         }
     }
 
+    @State private var path = NavigationPath()
+    @State private var deepLinkFocusAdd = false
+
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             Group {
                 if !store.isLoaded {
                     ProgressView()
@@ -150,8 +155,16 @@ struct HomeView: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(for: UUID.self) { listId in
             if let list = store.lists.first(where: { $0.id == listId }) {
-                ListView(list: list)
+                ListView(list: list, focusAddField: deepLinkFocusAdd)
+                    .onAppear { deepLinkFocusAdd = false }
             }
+        }
+        .onChange(of: navigationTarget) { _, filename in
+            guard let filename, let list = store.lists.first(where: { $0.filename == filename }) else { return }
+            deepLinkFocusAdd = focusAddField
+            path.append(list.id)
+            navigationTarget = nil
+            focusAddField = false
         }
     }
 }

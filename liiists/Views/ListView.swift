@@ -12,8 +12,11 @@ struct ListView: View {
     @State private var searchText = ""
     @FocusState private var isAddFieldFocused: Bool
 
-    init(list: ItemList) {
+    var focusAddField: Bool = false
+
+    init(list: ItemList, focusAddField: Bool = false) {
         _list = State(initialValue: list)
+        self.focusAddField = focusAddField
     }
 
     private var filteredItems: [ListItem] {
@@ -209,6 +212,11 @@ struct ListView: View {
         }
         .onChange(of: list) { _, newValue in
             store.update(newValue)
+        }
+        .onAppear {
+            if focusAddField {
+                isAddFieldFocused = true
+            }
         }
     }
 

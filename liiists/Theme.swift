@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 // MARK: - Nothing Design Color Tokens
 
@@ -134,15 +133,6 @@ enum Theme {
     static let transitionDuration: Double = 0.35
     static let nothingEasing = Animation.timingCurve(0.25, 0.1, 0.25, 1, duration: 0.2)
 
-    // MARK: - Haptics
-
-    static func lightHaptic() {
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-    }
-
-    static func mediumHaptic() {
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-    }
 }
 
 // MARK: - Nothing Label Style (ALL CAPS + tracking)

@@ -37,6 +37,10 @@ targets:
           - SpaceMono-Regular.ttf
           - SpaceMono-Bold.ttf
         UILaunchScreen: {}
+        CFBundleURLTypes:
+          - CFBundleURLSchemes:
+              - liiists
+            CFBundleURLName: com.davidtingle.liiists
         NSUbiquitousContainers:
           iCloud.com.davidtingle.liiists:
             NSUbiquitousContainerIsDocumentScopePublic: true
@@ -49,6 +53,7 @@ targets:
           - UIInterfaceOrientationLandscapeRight
     dependencies:
       - target: ShareExtension
+      - target: LiiistsWidget
       - package: PostHog
     entitlements:
       path: liiists/liiists.entitlements
@@ -100,6 +105,43 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.davidtingle.liiists.ShareExtension
+        SKIP_INSTALL: YES
+
+  LiiistsWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - LiiistsWidget
+      - path: liiists/Models
+        group: Shared
+      - path: liiists/Services/MarkdownParser.swift
+        group: Shared
+      - path: liiists/Services/SharedContainer.swift
+        group: Shared
+      - path: liiists/Services/IntentListStore.swift
+        group: Shared
+      - path: liiists/Theme.swift
+        group: Shared
+    resources:
+      - path: liiists/Resources/Fonts/SpaceGrotesk-Variable.ttf
+      - path: liiists/Resources/Fonts/SpaceMono-Regular.ttf
+      - path: liiists/Resources/Fonts/SpaceMono-Bold.ttf
+    entitlements:
+      path: LiiistsWidget/LiiistsWidget.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.davidtingle.liiists
+        com.apple.developer.ubiquity-container-identifiers:
+          - iCloud.com.davidtingle.liiists
+    info:
+      path: LiiistsWidget/Info.plist
+      properties:
+        CFBundleDisplayName: liiists Widgets
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.davidtingle.liiists.LiiistsWidget
         SKIP_INSTALL: YES
 
   liiistsTests:
