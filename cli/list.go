@@ -182,8 +182,27 @@ func getListsDir() (string, error) {
 		}
 	}
 
+	// Auto-detect iCloud container (shared with iOS app)
+	if dir := iCloudListsDir(); dir != "" {
+		return dir, nil
+	}
+
 	// Default
 	return filepath.Join(home, "lists"), nil
+}
+
+// iCloudListsDir returns the local path to the liiists iOS app's iCloud
+// container if it exists on this Mac, or "" otherwise.
+func iCloudListsDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	dir := filepath.Join(home, "Library", "Mobile Documents", "iCloud~com~davidtingle~liiists", "Documents")
+	if info, err := os.Stat(dir); err == nil && info.IsDir() {
+		return dir
+	}
+	return ""
 }
 
 func loadAllLists() ([]*List, error) {

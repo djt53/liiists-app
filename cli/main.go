@@ -3,9 +3,12 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/mdp/qrterminal/v3"
 )
 
 func main() {
@@ -33,6 +36,10 @@ func main() {
 		err = cmdCheck(args)
 	case "parse":
 		err = cmdParse(args)
+	case "where":
+		err = cmdWhere()
+	case "link":
+		err = cmdLink()
 	case "help", "--help", "-h":
 		printUsage()
 	default:
@@ -59,6 +66,8 @@ usage:
   liiists rm <list> <item>        remove an item
   liiists check <list> <item>     toggle checkbox (checklists)
   liiists parse [list]            parse messy text from stdin into items
+  liiists where                   show the lists directory in use
+  liiists link                    show a QR code to link the iOS app to this directory
 `)
 }
 
@@ -72,13 +81,21 @@ func cmdInit() error {
 
 	// Check if already initialized
 	if _, err := os.Stat(dir); err == nil {
-		fmt.Printf("already initialized: %s\n", dir)
+		if dir == iCloudListsDir() {
+			fmt.Printf("already initialized: %s\n  (synced with the liiists iOS app via iCloud)\n", dir)
+		} else {
+			fmt.Printf("already initialized: %s\n", dir)
+		}
 		return nil
 	}
 
 	// Ask for directory
 	reader := bufio.NewReader(os.Stdin)
-	fmt.Printf("where should lists live? [%s]: ", dir)
+	if dir == iCloudListsDir() {
+		fmt.Printf("found iCloud lists from the liiists iOS app — use them? [%s]: ", dir)
+	} else {
+		fmt.Printf("where should lists live? [%s]: ", dir)
+	}
 	input, _ := reader.ReadString('\n')
 	input = strings.TrimSpace(input)
 
@@ -356,6 +373,30 @@ func cmdParse(args []string) error {
 	for _, text := range items {
 		fmt.Printf("- %s\n", text)
 	}
+	return nil
+}
+
+func cmdWhere() error {
+	dir, err := getListsDir()
+	if err != nil {
+		return err
+	}
+	fmt.Println(dir)
+	if dir == iCloudListsDir() {
+		fmt.Println("(synced with the liiists iOS app via iCloud)")
+	}
+	return nil
+}
+
+func cmdLink() error {
+	dir, err := getListsDir()
+	if err != nil {
+		return err
+	}
+	deepLink := "liiists://link?path=" + url.QueryEscape(dir)
+	fmt.Printf("scan with the liiists iOS app to link this directory:\n\n  %s\n\n", dir)
+	qrterminal.GenerateHalfBlock(deepLink, qrterminal.L, os.Stdout)
+	fmt.Printf("\n%s\n", deepLink)
 	return nil
 }
 
