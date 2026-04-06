@@ -37,6 +37,7 @@ targets:
           - SpaceMono-Regular.ttf
           - SpaceMono-Bold.ttf
         UILaunchScreen: {}
+        ITSAppUsesNonExemptEncryption: false
         CFBundleURLTypes:
           - CFBundleURLSchemes:
               - liiists
