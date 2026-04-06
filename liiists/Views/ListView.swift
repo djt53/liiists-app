@@ -134,9 +134,15 @@ struct ListView: View {
             .scrollContentBackground(.hidden)
             .refreshable {
                 await Task { @MainActor in
-                    store.loadAll()
-                    if let updated = store.lists.first(where: { $0.filename == list.filename }) {
-                        list = updated
+                    let dir = SharedContainer.listsDirectory
+                    let url = dir.appendingPathComponent(list.filename)
+                    let coordinator = NSFileCoordinator()
+                    var error: NSError?
+                    coordinator.coordinate(readingItemAt: url, options: [], error: &error) { coordURL in
+                        if let content = try? String(contentsOf: coordURL, encoding: .utf8) {
+                            let refreshed = MarkdownParser.parse(content: content, filename: list.filename)
+                            list.items = refreshed.items
+                        }
                     }
                 }.value
             }
