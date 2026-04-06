@@ -5,6 +5,7 @@ struct HomeView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Binding var navigationTarget: String?
     @Binding var focusAddField: Bool
+    @Binding var showNewListFromDeepLink: Bool
     @State private var showNewList = false
     @State private var newListTitle = ""
     @State private var newListType: ItemList.ListType = .list
@@ -180,6 +181,12 @@ struct HomeView: View {
             path.append(filename)
             navigationTarget = nil
             focusAddField = false
+        }
+        .onChange(of: showNewListFromDeepLink) { _, newValue in
+            if newValue {
+                showNewList = true
+                showNewListFromDeepLink = false
+            }
         }
     }
 

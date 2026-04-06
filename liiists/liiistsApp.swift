@@ -5,6 +5,7 @@ struct liiistsApp: App {
     @StateObject private var store = ListStore()
     @State private var navigationTarget: String?
     @State private var focusAddField = false
+    @State private var showNewListFromDeepLink = false
 
     init() {
         Analytics.setup()
@@ -12,7 +13,7 @@ struct liiistsApp: App {
 
     var body: some Scene {
         WindowGroup {
-            HomeView(navigationTarget: $navigationTarget, focusAddField: $focusAddField)
+            HomeView(navigationTarget: $navigationTarget, focusAddField: $focusAddField, showNewListFromDeepLink: $showNewListFromDeepLink)
                 .environmentObject(store)
                 .preferredColorScheme(.dark)
                 .tint(Theme.ndAccent)
@@ -33,6 +34,8 @@ struct liiistsApp: App {
         case "add":
             navigationTarget = filename
             focusAddField = true
+        case "new":
+            showNewListFromDeepLink = true
         default:
             break
         }

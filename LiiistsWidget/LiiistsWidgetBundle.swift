@@ -7,5 +7,6 @@ struct LiiistsWidgetBundle: WidgetBundle {
         SingleListWidget()
         AllListsWidget()
         QuickAddWidget()
+        QuickAddRowWidget()
     }
 }

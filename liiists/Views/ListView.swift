@@ -309,7 +309,7 @@ struct ItemRow: View {
                 .buttonStyle(.plain)
             }
 
-            TextField("", text: $item.text)
+            TextField("", text: $item.text, axis: .vertical)
                 .font(Theme.bodyFont())
                 .foregroundStyle(
                     listType == .checklist && item.isChecked
@@ -317,7 +317,7 @@ struct ItemRow: View {
                         : Theme.ndTextPrimary.resolve(for: colorScheme)
                 )
                 .focused($isEditing)
-                .submitLabel(.next)
+                .lineLimit(nil)
 
             Spacer()
         }
