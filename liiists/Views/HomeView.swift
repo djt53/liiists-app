@@ -6,6 +6,16 @@ struct HomeView: View {
     @State private var showNewList = false
     @State private var newListTitle = ""
     @State private var newListType: ItemList.ListType = .list
+    @State private var searchText = ""
+
+    private var filteredLists: [ItemList] {
+        guard !searchText.isEmpty else { return store.lists }
+        let query = searchText.lowercased()
+        return store.lists.filter { list in
+            list.title.lowercased().contains(query) ||
+            list.items.contains { $0.text.lowercased().contains(query) }
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -60,13 +70,38 @@ struct HomeView: View {
             }
             .padding(.horizontal, Theme.spaceMD)
             .padding(.top, Theme.space3XL)
+            .padding(.bottom, Theme.spaceSM)
+
+            // Search bar
+            HStack(spacing: Theme.spaceSM) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 14, weight: .light))
+                    .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
+                TextField("Search lists\u{2026}", text: $searchText)
+                    .font(Theme.bodyFont())
+                    .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
+                if !searchText.isEmpty {
+                    Button {
+                        searchText = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 14))
+                            .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
+                    }
+                }
+            }
+            .padding(.horizontal, Theme.spaceMD)
+            .padding(.vertical, Theme.spaceSM)
+            .background(Theme.ndSurfaceRaised.resolve(for: colorScheme))
+            .clipShape(RoundedRectangle(cornerRadius: Theme.cornerRadius))
+            .padding(.horizontal, Theme.spaceMD)
             .padding(.bottom, Theme.spaceLG)
 
             // List rows
             List {
-                ForEach(store.lists) { list in
+                ForEach(filteredLists) { list in
                     NavigationLink(value: list.id) {
-                        ListRow(list: list)
+                        ListRow(list: list, searchQuery: searchText)
                     }
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 0, leading: Theme.spaceMD, bottom: 0, trailing: Theme.spaceMD))
@@ -83,6 +118,9 @@ struct HomeView: View {
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
+            .refreshable {
+                store.loadAll()
+            }
         }
         .background(Theme.ndBlack.resolve(for: colorScheme))
         .navigationBarTitleDisplayMode(.inline)
@@ -98,7 +136,14 @@ struct HomeView: View {
 
 struct ListRow: View {
     let list: ItemList
+    var searchQuery: String = ""
     @Environment(\.colorScheme) private var colorScheme
+
+    private var matchingItemCount: Int {
+        guard !searchQuery.isEmpty else { return 0 }
+        let query = searchQuery.lowercased()
+        return list.items.filter { $0.text.lowercased().contains(query) }.count
+    }
 
     var body: some View {
         HStack(spacing: Theme.spaceSM) {
@@ -112,7 +157,10 @@ struct ListRow: View {
                 .font(Theme.bodyFont())
                 .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
 
-            if list.type == .checklist && list.itemCount > 0 {
+            if !searchQuery.isEmpty && matchingItemCount > 0 {
+                Text("\(matchingItemCount) match\(matchingItemCount == 1 ? "" : "es")")
+                    .nothingLabel(color: Theme.ndTextSecondary.resolve(for: colorScheme))
+            } else if list.type == .checklist && list.itemCount > 0 {
                 Text("\(list.checkedCount)/\(list.itemCount)")
                     .nothingLabel(color: Theme.ndTextSecondary.resolve(for: colorScheme))
             } else if list.itemCount > 0 {

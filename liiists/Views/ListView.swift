@@ -9,10 +9,17 @@ struct ListView: View {
     @State private var showRename = false
     @State private var renameText = ""
     @State private var showDeleteConfirm = false
+    @State private var searchText = ""
     @FocusState private var isAddFieldFocused: Bool
 
     init(list: ItemList) {
         _list = State(initialValue: list)
+    }
+
+    private var filteredItems: [ListItem] {
+        guard !searchText.isEmpty else { return list.items }
+        let query = searchText.lowercased()
+        return list.items.filter { $0.text.lowercased().contains(query) }
     }
 
     var body: some View {
@@ -27,7 +34,34 @@ struct ListView: View {
             }
             .padding(.horizontal, Theme.spaceMD)
             .padding(.top, Theme.spaceLG)
-            .padding(.bottom, Theme.spaceMD)
+            .padding(.bottom, Theme.spaceSM)
+
+            // Search bar
+            if list.items.count > 5 {
+                HStack(spacing: Theme.spaceSM) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 14, weight: .light))
+                        .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
+                    TextField("Search\u{2026}", text: $searchText)
+                        .font(Theme.bodyFont())
+                        .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
+                    if !searchText.isEmpty {
+                        Button {
+                            searchText = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 14))
+                                .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
+                        }
+                    }
+                }
+                .padding(.horizontal, Theme.spaceMD)
+                .padding(.vertical, Theme.spaceSM)
+                .background(Theme.ndSurfaceRaised.resolve(for: colorScheme))
+                .clipShape(RoundedRectangle(cornerRadius: Theme.cornerRadius))
+                .padding(.horizontal, Theme.spaceMD)
+                .padding(.bottom, Theme.spaceSM)
+            }
 
             // Add item field — underline style
             HStack(spacing: Theme.spaceSM) {
@@ -74,7 +108,7 @@ struct ListView: View {
 
             // Items
             List {
-                ForEach($list.items) { $item in
+                ForEach(searchText.isEmpty ? $list.items : .constant(filteredItems)) { $item in
                     ItemRow(item: $item, listType: list.type) {
                         Theme.lightHaptic()
                     }
@@ -92,9 +126,18 @@ struct ListView: View {
                         }
                     }
                 }
+                .onMove { source, destination in
+                    list.items.move(fromOffsets: source, toOffset: destination)
+                }
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
+            .refreshable {
+                store.loadAll()
+                if let updated = store.lists.first(where: { $0.filename == list.filename }) {
+                    list = updated
+                }
+            }
         }
         .background(Theme.ndBlack.resolve(for: colorScheme))
         .navigationBarTitleDisplayMode(.inline)
@@ -191,6 +234,7 @@ struct ItemRow: View {
     @Binding var item: ListItem
     let listType: ItemList.ListType
     @Environment(\.colorScheme) private var colorScheme
+    @FocusState private var isEditing: Bool
     var onToggle: (() -> Void)?
 
     var body: some View {
@@ -207,17 +251,15 @@ struct ItemRow: View {
                 .buttonStyle(.plain)
             }
 
-            Text(item.text)
+            TextField("", text: $item.text, axis: .vertical)
                 .font(Theme.bodyFont())
                 .foregroundStyle(
                     listType == .checklist && item.isChecked
                         ? Theme.ndTextDisabled.resolve(for: colorScheme)
                         : Theme.ndTextPrimary.resolve(for: colorScheme)
                 )
-                .strikethrough(
-                    listType == .checklist && item.isChecked,
-                    color: Theme.ndTextDisabled.resolve(for: colorScheme)
-                )
+                .focused($isEditing)
+                .lineLimit(1...10)
 
             Spacer()
         }
