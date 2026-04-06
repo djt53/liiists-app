@@ -92,7 +92,7 @@ lists_dir: ~/my-lists
 
 ## Design
 
-The app's visual language is inspired by [Nothing's design system](https://nothing.tech) - monochromatic, dark-first, with dot-matrix typography (Doto) and Space Grotesk/Space Mono. Design system created by [Nothing Technology](https://nothing.tech).
+The app's visual language is inspired by Nothing's design system, implemented using [dominikmartn/nothing-design-skill](https://github.com/dominikmartn/nothing-design-skill). Monochromatic, dark-first, with dot-matrix typography (Doto) and Space Grotesk/Space Mono.
 
 ## License
 
