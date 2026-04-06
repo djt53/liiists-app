@@ -22,12 +22,15 @@
 	<string>1</string>
 	<key>NSExtension</key>
 	<dict>
-		<key>NSExtensionActivationRule</key>
+		<key>NSExtensionAttributes</key>
 		<dict>
-			<key>NSExtensionActivationSupportsText</key>
-			<true/>
-			<key>NSExtensionActivationSupportsWebURLWithMaxCount</key>
-			<integer>1</integer>
+			<key>NSExtensionActivationRule</key>
+			<dict>
+				<key>NSExtensionActivationSupportsText</key>
+				<true/>
+				<key>NSExtensionActivationSupportsWebURLWithMaxCount</key>
+				<integer>1</integer>
+			</dict>
 		</dict>
 		<key>NSExtensionPointIdentifier</key>
 		<string>com.apple.share-services</string>
