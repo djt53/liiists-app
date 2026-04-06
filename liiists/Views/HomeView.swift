@@ -2,17 +2,34 @@ import SwiftUI
 
 struct HomeView: View {
     @EnvironmentObject private var store: ListStore
+    @EnvironmentObject private var paywall: Paywall
     @Environment(\.colorScheme) private var colorScheme
     @Binding var navigationTarget: String?
     @Binding var focusAddField: Bool
     @Binding var showNewListFromDeepLink: Bool
     @State private var showNewList = false
+    @State private var showPaywall = false
+    @State private var showSettings = false
     @State private var newListTitle = ""
     @State private var newListType: ItemList.ListType = .list
     @State private var searchText = ""
     @State private var showSearch = false
     @State private var animatingCharIndex: Int? = nil
     @FocusState private var isSearchFocused: Bool
+
+    /// Whether the user is allowed to create another list right now.
+    private var canCreateAnotherList: Bool {
+        paywall.canCreateList(currentCount: store.lists.count)
+    }
+
+    /// Centralized "+" tap handler — gates on Pro status.
+    private func attemptCreateList() {
+        if canCreateAnotherList {
+            showNewList = true
+        } else {
+            showPaywall = true
+        }
+    }
 
     private var filteredLists: [ItemList] {
         guard !searchText.isEmpty else { return store.lists }
@@ -34,10 +51,16 @@ struct HomeView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .background(Theme.ndBlack.resolve(for: colorScheme))
                 } else if store.lists.isEmpty {
-                    EmptyStateView(onCreateList: { showNewList = true })
+                    EmptyStateView(onCreateList: { attemptCreateList() })
                 } else {
                     listsView
                 }
+            }
+            .sheet(isPresented: $showPaywall) {
+                PaywallSheet(paywall: paywall, reason: "list_cap_reached")
+            }
+            .sheet(isPresented: $showSettings) {
+                SettingsSheet(paywall: paywall)
             }
             .sheet(isPresented: $showNewList) {
                 NewListSheet(
@@ -100,7 +123,15 @@ struct HomeView: View {
                         .frame(width: 44, height: 44)
                 }
                 Button {
-                    showNewList = true
+                    showSettings = true
+                } label: {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 20, weight: .light))
+                        .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
+                        .frame(width: 44, height: 44)
+                }
+                Button {
+                    attemptCreateList()
                 } label: {
                     Image(systemName: "plus")
                         .font(.system(size: 20, weight: .light))
@@ -184,7 +215,7 @@ struct HomeView: View {
         }
         .onChange(of: showNewListFromDeepLink) { _, newValue in
             if newValue {
-                showNewList = true
+                attemptCreateList()
                 showNewListFromDeepLink = false
             }
         }

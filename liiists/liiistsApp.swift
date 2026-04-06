@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct liiistsApp: App {
     @StateObject private var store = ListStore()
+    @StateObject private var paywall = Paywall.shared
     @State private var navigationTarget: String?
     @State private var focusAddField = false
     @State private var showNewListFromDeepLink = false
@@ -15,6 +16,7 @@ struct liiistsApp: App {
         WindowGroup {
             HomeView(navigationTarget: $navigationTarget, focusAddField: $focusAddField, showNewListFromDeepLink: $showNewListFromDeepLink)
                 .environmentObject(store)
+                .environmentObject(paywall)
                 .preferredColorScheme(.dark)
                 .tint(Theme.ndAccent)
                 .onOpenURL { url in

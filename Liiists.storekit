@@ -1,0 +1,35 @@
+{
+  "identifier" : "8E5A4C7F-1B2D-4E3A-9C4F-LIIISTSPRO01",
+  "nonRenewingSubscriptions" : [],
+  "products" : [
+    {
+      "displayPrice" : "6.99",
+      "familyShareable" : false,
+      "internalID" : "0001",
+      "localizations" : [
+        {
+          "description" : "Unlimited lists, forever.",
+          "displayName" : "liiists Pro",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.davidtingle.liiists.pro",
+      "referenceName" : "liiists Pro",
+      "type" : "NonConsumable"
+    }
+  ],
+  "settings" : {
+    "_applicationInternalID" : "0",
+    "_developerTeamID" : "8HZAKZWFY8",
+    "_failTransactionsEnabled" : false,
+    "_lastSynchronizedDate" : 0,
+    "_locale" : "en_US",
+    "_storefront" : "USA",
+    "_storeKitErrors" : []
+  },
+  "subscriptionGroups" : [],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

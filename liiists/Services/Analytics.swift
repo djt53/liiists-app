@@ -83,6 +83,43 @@ enum Analytics {
         ])
     }
 
+    // MARK: - Paywall
+
+    static func paywallShown(reason: String) {
+        PostHogSDK.shared.capture("paywall_shown", properties: [
+            "reason": reason,
+        ])
+    }
+
+    static func paywallDismissed(reason: String) {
+        PostHogSDK.shared.capture("paywall_dismissed", properties: [
+            "reason": reason,
+        ])
+    }
+
+    static func purchaseCompleted(productID: String) {
+        PostHogSDK.shared.capture("purchase_completed", properties: [
+            "product_id": productID,
+        ])
+    }
+
+    static func purchaseCancelled(productID: String) {
+        PostHogSDK.shared.capture("purchase_cancelled", properties: [
+            "product_id": productID,
+        ])
+    }
+
+    static func purchaseFailed(productID: String, error: String) {
+        PostHogSDK.shared.capture("purchase_failed", properties: [
+            "product_id": productID,
+            "error": error,
+        ])
+    }
+
+    static func purchaseRestored() {
+        PostHogSDK.shared.capture("purchase_restored")
+    }
+
     // MARK: - Share Extension
 
     static func shareExtensionUsed(listTitle: String, contentType: String) {
