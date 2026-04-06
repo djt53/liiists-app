@@ -53,7 +53,7 @@ struct HomeView: View {
                         // Navigate to the new list
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                             deepLinkFocusAdd = true
-                            path.append(newList.id)
+                            path.append(newList.filename)
                         }
                     },
                     onCancel: {
@@ -141,7 +141,7 @@ struct HomeView: View {
             // List rows
             List {
                 ForEach(filteredLists) { list in
-                    NavigationLink(value: list.id) {
+                    NavigationLink(value: list.filename) {
                         ListRow(list: list, searchQuery: searchText)
                     }
                     .listRowBackground(Color.clear)
@@ -168,16 +168,16 @@ struct HomeView: View {
         .background(Theme.ndBlack.resolve(for: colorScheme))
         .onAppear { runTitleAnimation() }
         .navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(for: UUID.self) { listId in
-            if let list = store.lists.first(where: { $0.id == listId }) {
+        .navigationDestination(for: String.self) { filename in
+            if let list = store.lists.first(where: { $0.filename == filename }) {
                 ListView(list: list, focusAddField: deepLinkFocusAdd)
                     .onAppear { deepLinkFocusAdd = false }
             }
         }
         .onChange(of: navigationTarget) { _, filename in
-            guard let filename, let list = store.lists.first(where: { $0.filename == filename }) else { return }
+            guard let filename, store.lists.contains(where: { $0.filename == filename }) else { return }
             deepLinkFocusAdd = focusAddField
-            path.append(list.id)
+            path.append(filename)
             navigationTarget = nil
             focusAddField = false
         }
