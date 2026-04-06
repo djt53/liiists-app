@@ -90,7 +90,11 @@ class ShareViewController: UIViewController {
 
         let content = MarkdownParser.write(updated)
         let url = SharedContainer.listsDirectory.appendingPathComponent(updated.filename)
-        try? content.write(to: url, atomically: true, encoding: .utf8)
+        let coordinator = NSFileCoordinator()
+        var error: NSError?
+        coordinator.coordinate(writingItemAt: url, options: .forReplacing, error: &error) { coordURL in
+            try? content.write(to: coordURL, atomically: true, encoding: .utf8)
+        }
         done()
     }
 

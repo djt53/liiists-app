@@ -187,6 +187,10 @@ struct IntentListStore {
     func save(_ list: ItemList) {
         let content = MarkdownParser.write(list)
         let url = listsDirectory.appendingPathComponent(list.filename)
-        try? content.write(to: url, atomically: true, encoding: .utf8)
+        let coordinator = NSFileCoordinator()
+        var error: NSError?
+        coordinator.coordinate(writingItemAt: url, options: .forReplacing, error: &error) { coordURL in
+            try? content.write(to: coordURL, atomically: true, encoding: .utf8)
+        }
     }
 }

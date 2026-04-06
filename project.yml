@@ -10,7 +10,7 @@ settings:
   base:
     SWIFT_VERSION: "5.9"
     MARKETING_VERSION: "1.0.0"
-    CURRENT_PROJECT_VERSION: 4
+    CURRENT_PROJECT_VERSION: 5
     DEVELOPMENT_TEAM: 8HZAKZWFY8
     CODE_SIGN_STYLE: Automatic
 
@@ -32,6 +32,11 @@ targets:
           - SpaceMono-Regular.ttf
           - SpaceMono-Bold.ttf
         UILaunchScreen: {}
+        NSUbiquitousContainers:
+          iCloud.com.davidtingle.liiists:
+            NSUbiquitousContainerIsDocumentScopePublic: true
+            NSUbiquitousContainerSupportedFolderLevels: None
+            NSUbiquitousContainerName: liiists
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationPortraitUpsideDown
@@ -44,6 +49,8 @@ targets:
       properties:
         com.apple.security.application-groups:
           - group.com.davidtingle.liiists
+        com.apple.developer.ubiquity-container-identifiers:
+          - iCloud.com.davidtingle.liiists
     settings:
       base:
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
@@ -71,6 +78,8 @@ targets:
       properties:
         com.apple.security.application-groups:
           - group.com.davidtingle.liiists
+        com.apple.developer.ubiquity-container-identifiers:
+          - iCloud.com.davidtingle.liiists
     info:
       path: ShareExtension/Info.plist
       properties:

@@ -6,5 +6,9 @@
 	<array>
 		<string>group.com.davidtingle.liiists</string>
 	</array>
+	<key>com.apple.developer.ubiquity-container-identifiers</key>
+	<array>
+		<string>iCloud.com.davidtingle.liiists</string>
+	</array>
 </dict>
 </plist>
