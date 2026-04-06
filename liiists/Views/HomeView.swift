@@ -7,6 +7,8 @@ struct HomeView: View {
     @State private var newListTitle = ""
     @State private var newListType: ItemList.ListType = .list
     @State private var searchText = ""
+    @State private var showSearch = false
+    @FocusState private var isSearchFocused: Bool
 
     private var filteredLists: [ItemList] {
         guard !searchText.isEmpty else { return store.lists }
@@ -42,6 +44,9 @@ struct HomeView: View {
                         newListTitle = ""
                         newListType = .list
                         showNewList = false
+                    },
+                    onCancel: {
+                        showNewList = false
                     }
                 )
                 .presentationDetents([.medium])
@@ -60,6 +65,21 @@ struct HomeView: View {
                     .tracking(-0.02 * Theme.displayLG)
                 Spacer()
                 Button {
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        showSearch.toggle()
+                        if showSearch {
+                            isSearchFocused = true
+                        } else {
+                            searchText = ""
+                        }
+                    }
+                } label: {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 20, weight: .light))
+                        .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
+                        .frame(width: 44, height: 44)
+                }
+                Button {
                     showNewList = true
                 } label: {
                     Image(systemName: "plus")
@@ -70,32 +90,34 @@ struct HomeView: View {
             }
             .padding(.horizontal, Theme.spaceMD)
             .padding(.top, Theme.space3XL)
-            .padding(.bottom, Theme.spaceSM)
+            .padding(.bottom, showSearch ? Theme.spaceSM : Theme.spaceLG)
 
-            // Search bar
-            HStack(spacing: Theme.spaceSM) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 14, weight: .light))
-                    .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
-                TextField("Search lists\u{2026}", text: $searchText)
-                    .font(Theme.bodyFont())
-                    .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
-                if !searchText.isEmpty {
+            // Search bar (expandable)
+            if showSearch {
+                HStack(spacing: Theme.spaceSM) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 14, weight: .light))
+                        .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
+                    TextField("Search lists\u{2026}", text: $searchText)
+                        .font(Theme.bodyFont())
+                        .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
+                        .focused($isSearchFocused)
                     Button {
                         searchText = ""
+                        showSearch = false
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .font(.system(size: 14))
                             .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
                     }
                 }
+                .padding(.horizontal, Theme.spaceMD)
+                .padding(.vertical, Theme.spaceSM)
+                .background(Theme.ndSurfaceRaised.resolve(for: colorScheme))
+                .clipShape(RoundedRectangle(cornerRadius: Theme.cornerRadius))
+                .padding(.horizontal, Theme.spaceMD)
+                .padding(.bottom, Theme.spaceLG)
             }
-            .padding(.horizontal, Theme.spaceMD)
-            .padding(.vertical, Theme.spaceSM)
-            .background(Theme.ndSurfaceRaised.resolve(for: colorScheme))
-            .clipShape(RoundedRectangle(cornerRadius: Theme.cornerRadius))
-            .padding(.horizontal, Theme.spaceMD)
-            .padding(.bottom, Theme.spaceLG)
 
             // List rows
             List {
@@ -183,6 +205,7 @@ struct NewListSheet: View {
     @Binding var title: String
     @Binding var listType: ItemList.ListType
     var onCreate: () -> Void
+    var onCancel: () -> Void
     @Environment(\.colorScheme) private var colorScheme
     @FocusState private var isFocused: Bool
 
@@ -197,6 +220,7 @@ struct NewListSheet: View {
                 Button {
                     title = ""
                     listType = .list
+                    onCancel()
                 } label: {
                     Text("CANCEL")
                         .font(Theme.labelFont(size: 13))
