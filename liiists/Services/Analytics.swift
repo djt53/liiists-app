@@ -2,7 +2,7 @@ import Foundation
 import PostHog
 
 enum Analytics {
-    private static let apiKey = "phc_HNWvDwy8n2SAhK7WGeyRvNK8LtUKz5G7ZWjsY5KrWp8"
+    private static let apiKey = "phc_CYZfwiiqycRoarhRVdPjGDUmSkpAy8DKu3hFBeswh7xX"
 
     static func setup() {
         let config = PostHogConfig(apiKey: apiKey, host: "https://us.i.posthog.com")
