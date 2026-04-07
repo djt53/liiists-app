@@ -99,7 +99,8 @@ struct LiiistsShortcuts: AppShortcutsProvider {
         AppShortcut(
             intent: AddItemIntent(),
             phrases: [
-                "Add \(\.$itemText) to a list in \(.applicationName)",
+                "Add an item to a list in \(.applicationName)",
+                "Add to a list in \(.applicationName)",
             ],
             shortTitle: "Add Item",
             systemImageName: "plus.circle"
