@@ -109,7 +109,8 @@ struct ListView: View {
                         .font(Theme.bodyFont())
                         .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
                         .focused($isAddFieldFocused)
-                        .submitLabel(.next)
+                        .submitLabel(.done)
+                        .tint(.blue)
                         .onSubmit {
                             addItem()
                         }
@@ -142,6 +143,22 @@ struct ListView: View {
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
                     .listRowSeparatorTint(Theme.ndBorder.resolve(for: colorScheme))
+                    .contextMenu {
+                        Button {
+                            UIPasteboard.general.string = item.text
+                            Theme.lightHaptic()
+                        } label: {
+                            Label("Copy", systemImage: "doc.on.doc")
+                        }
+                        Button(role: .destructive) {
+                            if let idx = list.items.firstIndex(where: { $0.id == item.id }) {
+                                list.items.remove(at: idx)
+                                Theme.lightHaptic()
+                            }
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                    }
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                         Button(role: .destructive) {
                             if let idx = list.items.firstIndex(where: { $0.id == item.id }) {
@@ -238,8 +255,13 @@ struct ListView: View {
             store.update(newValue)
         }
         .onChange(of: isAddFieldFocused) { _, focused in
-            if !focused && !isSubmitting && newItemText.trimmingCharacters(in: .whitespaces).isEmpty && !list.items.isEmpty {
-                isAdding = false
+            if !focused && !isSubmitting {
+                // Tapping away counts as enter — commit any pending text first.
+                if !newItemText.trimmingCharacters(in: .whitespaces).isEmpty {
+                    addItem()
+                } else if !list.items.isEmpty {
+                    isAdding = false
+                }
             }
         }
         .onAppear {
@@ -374,5 +396,21 @@ struct ItemRow: View {
                 .strokeBorder(Theme.ndBorderVisible.resolve(for: colorScheme), lineWidth: Theme.checkboxStroke)
                 .frame(width: Theme.checkboxSize, height: Theme.checkboxSize)
         }
+    }
+}
+
+// MARK: - Edge swipe back gesture (T-110)
+// Re-enable the interactive pop gesture even when the navigation back button
+// is hidden (we use a custom Nothing-style chevron). Without this, hiding the
+// system back button also disables iOS's default left-edge swipe-to-go-back.
+
+extension UINavigationController: @retroactive UIGestureRecognizerDelegate {
+    override open func viewDidLoad() {
+        super.viewDidLoad()
+        interactivePopGestureRecognizer?.delegate = self
+    }
+
+    public func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        viewControllers.count > 1
     }
 }

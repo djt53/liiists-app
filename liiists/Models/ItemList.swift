@@ -7,6 +7,7 @@ struct ItemList: Identifiable, Equatable {
     var title: String
     var type: ListType
     var createdDate: Date?
+    var modifiedDate: Date?
     var items: [ListItem]
 
     /// Extra frontmatter keys we don't recognize — preserved on round-trip.
@@ -23,6 +24,7 @@ struct ItemList: Identifiable, Equatable {
         title: String? = nil,
         type: ListType = .list,
         createdDate: Date? = nil,
+        modifiedDate: Date? = nil,
         items: [ListItem] = [],
         extraFrontmatter: [String: String] = [:]
     ) {
@@ -31,6 +33,7 @@ struct ItemList: Identifiable, Equatable {
         self.title = title ?? Self.titleFromFilename(filename)
         self.type = type
         self.createdDate = createdDate
+        self.modifiedDate = modifiedDate
         self.items = items
         self.extraFrontmatter = extraFrontmatter
     }

@@ -1,5 +1,32 @@
 import SwiftUI
 
+enum HomeSortOption: String, CaseIterable, Identifiable {
+    case manual
+    case alphabetical
+    case recentlyUpdated
+    case itemCount
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .manual: return "Manual"
+        case .alphabetical: return "Alphabetical"
+        case .recentlyUpdated: return "Recently Updated"
+        case .itemCount: return "Item Count"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .manual: return "line.3.horizontal"
+        case .alphabetical: return "textformat"
+        case .recentlyUpdated: return "clock"
+        case .itemCount: return "number"
+        }
+    }
+}
+
 struct HomeView: View {
     @EnvironmentObject private var store: ListStore
     @Environment(\.colorScheme) private var colorScheme
@@ -13,6 +40,12 @@ struct HomeView: View {
     @State private var showSearch = false
     @State private var animatingCharIndex: Int? = nil
     @FocusState private var isSearchFocused: Bool
+    @AppStorage("home_sort_option") private var sortOptionRaw: String = HomeSortOption.alphabetical.rawValue
+    @AppStorage("home_manual_order") private var manualOrderRaw: String = ""
+
+    private var sortOption: HomeSortOption {
+        HomeSortOption(rawValue: sortOptionRaw) ?? .alphabetical
+    }
 
     private var filteredLists: [ItemList] {
         guard !searchText.isEmpty else { return store.lists }
@@ -21,6 +54,34 @@ struct HomeView: View {
             list.title.lowercased().contains(query) ||
             list.items.contains { $0.text.lowercased().contains(query) }
         }
+    }
+
+    private var sortedLists: [ItemList] {
+        let base = filteredLists
+        switch sortOption {
+        case .alphabetical:
+            return base.sorted { $0.title.lowercased() < $1.title.lowercased() }
+        case .recentlyUpdated:
+            return base.sorted { ($0.modifiedDate ?? .distantPast) > ($1.modifiedDate ?? .distantPast) }
+        case .itemCount:
+            return base.sorted { $0.itemCount > $1.itemCount }
+        case .manual:
+            let order = manualOrderRaw.split(separator: ",").map(String.init)
+            let indexMap = Dictionary(uniqueKeysWithValues: order.enumerated().map { ($1, $0) })
+            return base.sorted { (a, b) in
+                let ia = indexMap[a.filename] ?? Int.max
+                let ib = indexMap[b.filename] ?? Int.max
+                if ia == ib { return a.title.lowercased() < b.title.lowercased() }
+                return ia < ib
+            }
+        }
+    }
+
+    private func moveLists(from source: IndexSet, to destination: Int) {
+        var current = sortedLists
+        current.move(fromOffsets: source, toOffset: destination)
+        manualOrderRaw = current.map { $0.filename }.joined(separator: ",")
+        Theme.lightHaptic()
     }
 
     @State private var path = NavigationPath()
@@ -97,7 +158,20 @@ struct HomeView: View {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 20, weight: .light))
                         .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
-                        .frame(width: 44, height: 44)
+                        .frame(width: 32, height: 44)
+                }
+                Menu {
+                    Picker("Sort by", selection: $sortOptionRaw) {
+                        ForEach(HomeSortOption.allCases) { option in
+                            Label(option.label, systemImage: option.icon)
+                                .tag(option.rawValue)
+                        }
+                    }
+                } label: {
+                    Image(systemName: "arrow.up.arrow.down")
+                        .font(.system(size: 18, weight: .light))
+                        .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
+                        .frame(width: 32, height: 44)
                 }
                 Button {
                     showNewList = true
@@ -105,7 +179,7 @@ struct HomeView: View {
                     Image(systemName: "plus")
                         .font(.system(size: 20, weight: .light))
                         .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
-                        .frame(width: 44, height: 44)
+                        .frame(width: 32, height: 44)
                 }
             }
             .padding(.horizontal, Theme.spaceMD)
@@ -141,7 +215,7 @@ struct HomeView: View {
 
             // List rows
             List {
-                ForEach(filteredLists) { list in
+                ForEach(sortedLists) { list in
                     NavigationLink(value: list.filename) {
                         ListRow(list: list, searchQuery: searchText)
                     }
@@ -157,6 +231,7 @@ struct HomeView: View {
                         }
                     }
                 }
+                .onMove(perform: sortOption == .manual ? moveLists : nil)
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)

@@ -52,7 +52,10 @@ final class ListStore: ObservableObject {
                     content = try? String(contentsOf: coordURL, encoding: .utf8)
                 }
                 guard let content else { return nil }
-                return MarkdownParser.parse(content: content, filename: url.lastPathComponent)
+                var parsed = MarkdownParser.parse(content: content, filename: url.lastPathComponent)
+                let values = try? url.resourceValues(forKeys: [.contentModificationDateKey])
+                parsed.modifiedDate = values?.contentModificationDate
+                return parsed
             }
             .sorted { ($0.title) < ($1.title) }
 
