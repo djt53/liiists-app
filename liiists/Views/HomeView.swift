@@ -29,6 +29,7 @@ enum HomeSortOption: String, CaseIterable, Identifiable {
 
 struct HomeView: View {
     @EnvironmentObject private var store: ListStore
+    @EnvironmentObject private var account: AccountStore
     @Environment(\.colorScheme) private var colorScheme
     @Binding var navigationTarget: String?
     @Binding var focusAddField: Bool
@@ -39,9 +40,19 @@ struct HomeView: View {
     @State private var searchText = ""
     @State private var showSearch = false
     @State private var animatingCharIndex: Int? = nil
+    @State private var showPublishOnboarding = false
     @FocusState private var isSearchFocused: Bool
     @AppStorage("home_sort_option") private var sortOptionRaw: String = HomeSortOption.alphabetical.rawValue
     @AppStorage("home_manual_order") private var manualOrderRaw: String = ""
+    /// Decision 008: flips true once the user either completes the publish
+    /// onboarding sheet OR explicitly dismisses it. The bottom CTA is hidden
+    /// permanently after that.
+    @AppStorage("social_engaged") private var socialEngaged: Bool = false
+
+    /// Bottom CTA visibility — three lists is the engagement gate.
+    private var showsPublishCTA: Bool {
+        !socialEngaged && store.lists.count >= 3
+    }
 
     private var sortOption: HomeSortOption {
         HomeSortOption(rawValue: sortOptionRaw) ?? .alphabetical
@@ -99,6 +110,12 @@ struct HomeView: View {
                 } else {
                     listsView
                 }
+            }
+            .sheet(isPresented: $showPublishOnboarding) {
+                PublishOnboardingSheet(onFinish: {
+                    socialEngaged = true
+                })
+                .environmentObject(account)
             }
             .sheet(isPresented: $showNewList) {
                 NewListSheet(
@@ -240,6 +257,11 @@ struct HomeView: View {
                     store.loadAll()
                 }.value
             }
+            .safeAreaInset(edge: .bottom) {
+                if showsPublishCTA {
+                    publishCTA
+                }
+            }
         }
         .background(Theme.ndBlack.resolve(for: colorScheme))
         .onAppear { runTitleAnimation() }
@@ -263,6 +285,28 @@ struct HomeView: View {
                 showNewListFromDeepLink = false
             }
         }
+    }
+
+    /// Subtle text-link CTA pinned to the bottom of HomeView. Visible only
+    /// once the user has 3+ lists and hasn't engaged with publish onboarding.
+    /// Decision 008.
+    private var publishCTA: some View {
+        Button {
+            showPublishOnboarding = true
+        } label: {
+            HStack(spacing: Theme.spaceXS) {
+                Text("Want to publish a list?")
+                    .font(Theme.bodyFont(size: Theme.bodySM))
+                    .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, Theme.spaceMD)
+            .background(Theme.ndBlack.resolve(for: colorScheme))
+        }
+        .buttonStyle(.plain)
     }
 
     private func runTitleAnimation() {
