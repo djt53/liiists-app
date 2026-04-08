@@ -10,7 +10,7 @@ settings:
   base:
     SWIFT_VERSION: "5.9"
     MARKETING_VERSION: "1.0.0"
-    CURRENT_PROJECT_VERSION: 14
+    CURRENT_PROJECT_VERSION: 15
     DEVELOPMENT_TEAM: 8HZAKZWFY8
     CODE_SIGN_STYLE: Automatic
 
@@ -65,6 +65,7 @@ targets:
           - iCloud.com.davidtingle.liiists
         com.apple.developer.icloud-services:
           - CloudKit
+          - CloudDocuments
         com.apple.developer.icloud-container-identifiers:
           - iCloud.com.davidtingle.liiists
         com.apple.developer.applesignin:
