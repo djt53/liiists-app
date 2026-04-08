@@ -41,6 +41,7 @@ struct HomeView: View {
     @State private var showSearch = false
     @State private var animatingCharIndex: Int? = nil
     @State private var showPublishOnboarding = false
+    @State private var showAccountSheet = false
     @FocusState private var isSearchFocused: Bool
     @AppStorage("home_sort_option") private var sortOptionRaw: String = HomeSortOption.alphabetical.rawValue
     @AppStorage("home_manual_order") private var manualOrderRaw: String = ""
@@ -117,6 +118,10 @@ struct HomeView: View {
                 })
                 .environmentObject(account)
             }
+            .sheet(isPresented: $showAccountSheet) {
+                AccountSheet()
+                    .environmentObject(account)
+            }
             .sheet(isPresented: $showNewList) {
                 NewListSheet(
                     title: $newListTitle,
@@ -190,6 +195,7 @@ struct HomeView: View {
                         .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
                         .frame(width: 32, height: 44)
                 }
+                accountButton
                 Button {
                     showNewList = true
                 } label: {
@@ -283,6 +289,23 @@ struct HomeView: View {
             if newValue {
                 showNewList = true
                 showNewListFromDeepLink = false
+            }
+        }
+    }
+
+    /// Toolbar account icon — only visible when the user is signed in.
+    /// Tapping opens AccountSheet (T-51d). Hidden state means zero clutter
+    /// for the default unsigned user.
+    @ViewBuilder
+    private var accountButton: some View {
+        if account.isSignedIn {
+            Button {
+                showAccountSheet = true
+            } label: {
+                Image(systemName: "person.crop.circle")
+                    .font(.system(size: 20, weight: .light))
+                    .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
+                    .frame(width: 32, height: 44)
             }
         }
     }
