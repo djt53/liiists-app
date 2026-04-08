@@ -3,13 +3,17 @@ import SwiftUI
 @main
 struct liiistsApp: App {
     @StateObject private var store = ListStore()
-    @StateObject private var account = AccountStore()
+    @StateObject private var account: AccountStore
+    @StateObject private var publish: PublishStore
     @State private var navigationTarget: String?
     @State private var focusAddField = false
     @State private var showNewListFromDeepLink = false
 
     init() {
         Analytics.setup()
+        let account = AccountStore()
+        _account = StateObject(wrappedValue: account)
+        _publish = StateObject(wrappedValue: PublishStore(account: account))
     }
 
     var body: some Scene {
@@ -17,10 +21,14 @@ struct liiistsApp: App {
             HomeView(navigationTarget: $navigationTarget, focusAddField: $focusAddField, showNewListFromDeepLink: $showNewListFromDeepLink)
                 .environmentObject(store)
                 .environmentObject(account)
+                .environmentObject(publish)
                 .preferredColorScheme(.dark)
                 .tint(Theme.ndAccent)
                 .task {
                     await account.refreshCredentialState()
+                    store.republishHook = { [weak publish] list in
+                        publish?.republishIfNeeded(list)
+                    }
                 }
                 .onOpenURL { url in
                     handleDeepLink(url)

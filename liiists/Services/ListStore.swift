@@ -9,6 +9,11 @@ final class ListStore: ObservableObject {
     @Published var lists: [ItemList] = []
     @Published var isLoaded = false
 
+    /// Optional hook called after every successful save. Used by PublishStore
+    /// to auto-republish lists that have been published to the social feed
+    /// (decision 006). Set from liiistsApp at startup.
+    var republishHook: ((ItemList) -> Void)?
+
     private let fileManager = FileManager.default
     private var listsDirectory: URL
     private var metadataQuery: NSMetadataQuery?
@@ -87,6 +92,7 @@ final class ListStore: ObservableObject {
             try? content.write(to: coordURL, atomically: true, encoding: .utf8)
         }
         WidgetCenter.shared.reloadAllTimelines()
+        republishHook?(list)
     }
 
     func rename(_ list: inout ItemList, to newTitle: String) {
