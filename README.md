@@ -36,6 +36,8 @@ echo "messy, text, input" | liiists parse books  # parse text into items
 }
 ```
 
+**Agent skill** -[`SKILL.md`](./SKILL.md) is a drop-in skill file for Claude Code (and any coding agent that reads agent guides). Copy it into your skills directory (e.g. `~/.claude/skills/liiists/SKILL.md`) and your agent will know how to manage your lists via the CLI — adding items, parsing free-text dumps, checking things off. Works alongside the MCP server or on its own.
+
 **Share Extension** -share a URL or text from any app into a list.
 
 **Siri Shortcuts** -"Add Severance to my TV list."
