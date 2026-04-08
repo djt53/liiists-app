@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct liiistsApp: App {
     @StateObject private var store = ListStore()
+    @StateObject private var account = AccountStore()
     @State private var navigationTarget: String?
     @State private var focusAddField = false
     @State private var showNewListFromDeepLink = false
@@ -15,8 +16,12 @@ struct liiistsApp: App {
         WindowGroup {
             HomeView(navigationTarget: $navigationTarget, focusAddField: $focusAddField, showNewListFromDeepLink: $showNewListFromDeepLink)
                 .environmentObject(store)
+                .environmentObject(account)
                 .preferredColorScheme(.dark)
                 .tint(Theme.ndAccent)
+                .task {
+                    await account.refreshCredentialState()
+                }
                 .onOpenURL { url in
                     handleDeepLink(url)
                 }

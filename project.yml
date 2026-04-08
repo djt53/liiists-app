@@ -63,6 +63,12 @@ targets:
           - group.com.davidtingle.liiists
         com.apple.developer.ubiquity-container-identifiers:
           - iCloud.com.davidtingle.liiists
+        com.apple.developer.icloud-services:
+          - CloudKit
+        com.apple.developer.icloud-container-identifiers:
+          - iCloud.com.davidtingle.liiists
+        com.apple.developer.applesignin:
+          - Default
     settings:
       base:
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
