@@ -2,6 +2,8 @@ import SwiftUI
 
 struct ListView: View {
     @EnvironmentObject private var store: ListStore
+    @EnvironmentObject private var account: AccountStore
+    @EnvironmentObject private var publish: PublishStore
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismiss
     @State private var list: ItemList
@@ -9,11 +11,19 @@ struct ListView: View {
     @State private var showRename = false
     @State private var renameText = ""
     @State private var showDeleteConfirm = false
+    @State private var showUnpublishConfirm = false
     @State private var searchText = ""
     @State private var showSearch = false
     @State private var isAdding = false
+    @State private var showPublishOnboarding = false
+    @State private var publishAfterOnboarding = false
     @FocusState private var isAddFieldFocused: Bool
     @FocusState private var isSearchFocused: Bool
+    @AppStorage("social_engaged") private var socialEngaged: Bool = false
+
+    private var isPublished: Bool {
+        publish.isPublished(filename: list.filename)
+    }
 
     var isNewList: Bool = false
 
@@ -68,7 +78,13 @@ struct ListView: View {
             }
             .padding(.horizontal, Theme.spaceMD)
             .padding(.top, Theme.spaceLG)
-            .padding(.bottom, showSearch ? Theme.spaceSM : Theme.spaceMD)
+            .padding(.bottom, isPublished ? Theme.spaceXS : (showSearch ? Theme.spaceSM : Theme.spaceMD))
+
+            if isPublished {
+                publicChip
+                    .padding(.horizontal, Theme.spaceMD)
+                    .padding(.bottom, showSearch ? Theme.spaceSM : Theme.spaceMD)
+            }
 
             // Expandable search bar
             if showSearch {
@@ -221,6 +237,22 @@ struct ListView: View {
 
                     Divider()
 
+                    if isPublished {
+                        Button {
+                            showUnpublishConfirm = true
+                        } label: {
+                            Label("Unpublish", systemImage: "eye.slash")
+                        }
+                    } else {
+                        Button {
+                            handlePublishTapped()
+                        } label: {
+                            Label("Publish to Discover", systemImage: "sparkles")
+                        }
+                    }
+
+                    Divider()
+
                     Button(role: .destructive) {
                         showDeleteConfirm = true
                     } label: {
@@ -251,6 +283,24 @@ struct ListView: View {
         } message: {
             Text("This will permanently delete \"\(list.title)\" and all its items.")
         }
+        .alert("Unpublish?", isPresented: $showUnpublishConfirm) {
+            Button("Unpublish", role: .destructive) {
+                Task { await publish.unpublish(list) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("\"\(list.title)\" will be removed from Discover. Your local copy is unchanged.")
+        }
+        .sheet(isPresented: $showPublishOnboarding) {
+            PublishOnboardingSheet(onFinish: {
+                socialEngaged = true
+                if publishAfterOnboarding && account.isSignedIn {
+                    Task { await publish.publish(list) }
+                }
+                publishAfterOnboarding = false
+            })
+            .environmentObject(account)
+        }
         .onChange(of: list) { _, newValue in
             store.update(newValue)
         }
@@ -268,6 +318,37 @@ struct ListView: View {
             if isNewList || list.items.isEmpty {
                 startAdding()
             }
+        }
+    }
+
+    // MARK: - Publish
+
+    /// Small "Public" pill shown under the title when the list is currently
+    /// in CloudKit's public DB. Decision 008 — visible safety badge so edits
+    /// to a published list are never surprising.
+    private var publicChip: some View {
+        HStack(spacing: Theme.spaceXS) {
+            Circle()
+                .fill(Theme.ndAccent)
+                .frame(width: 6, height: 6)
+            Text("PUBLIC")
+                .font(Theme.labelFont(size: Theme.labelSize))
+                .tracking(Theme.labelSize * 0.1)
+                .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
+        }
+        .padding(.horizontal, Theme.spaceSM)
+        .padding(.vertical, 4)
+        .background(Theme.ndSurfaceRaised.resolve(for: colorScheme))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.pillRadius))
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func handlePublishTapped() {
+        if account.isSignedIn {
+            Task { await publish.publish(list) }
+        } else {
+            publishAfterOnboarding = true
+            showPublishOnboarding = true
         }
     }
 
