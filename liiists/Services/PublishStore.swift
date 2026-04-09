@@ -32,6 +32,11 @@ final class PublishStore: ObservableObject {
     @Published private(set) var isLoadingFeed = false
     @Published private(set) var lastError: String?
 
+    /// Set of local filenames currently mid-publish. Prevents tap-spam from
+    /// creating duplicate CK records when the user can't see that the first
+    /// tap is in flight.
+    @Published private(set) var publishingFilenames: Set<String> = []
+
     // MARK: - Dependencies
 
     private unowned let account: AccountStore
@@ -118,6 +123,15 @@ final class PublishStore: ObservableObject {
             return
         }
 
+        // Re-entrance guard — prevents tap-spam from creating duplicate CK
+        // records before the first round-trip resolves.
+        guard !publishingFilenames.contains(list.filename) else {
+            print("[PublishStore] publish skipped — already in flight for \(list.filename)")
+            return
+        }
+        publishingFilenames.insert(list.filename)
+        defer { publishingFilenames.remove(list.filename) }
+
         do {
             if let existingRecordName = publishedIndex[list.filename] {
                 try await updatePublished(list, recordName: existingRecordName)
@@ -132,6 +146,10 @@ final class PublishStore: ObservableObject {
             print("[PublishStore] publish FAILED: \(nsError.domain) \(nsError.code) — \(nsError.localizedDescription)")
             print("[PublishStore] userInfo: \(nsError.userInfo)")
         }
+    }
+
+    func isPublishing(filename: String) -> Bool {
+        publishingFilenames.contains(filename)
     }
 
     private func createPublished(_ list: ItemList) async throws {

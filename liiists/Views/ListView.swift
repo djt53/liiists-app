@@ -319,8 +319,10 @@ struct ListView: View {
                 Button {
                     handlePublishTapped()
                 } label: {
-                    Label("Publish to Discover", systemImage: "sparkles")
+                    Label(publish.isPublishing(filename: list.filename) ? "Publishing…" : "Publish to Discover",
+                          systemImage: "sparkles")
                 }
+                .disabled(publish.isPublishing(filename: list.filename))
             }
 
             Divider()
