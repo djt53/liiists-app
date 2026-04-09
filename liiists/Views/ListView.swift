@@ -46,7 +46,7 @@ struct ListView: View {
     var body: some View {
         VStack(spacing: 0) {
             // Title + search/plus icons
-            HStack(alignment: .center) {
+            HStack(alignment: .top) {
                 Text(list.title)
                     .font(Theme.headingFont(size: Theme.headingSize, weight: .medium))
                     .foregroundStyle(Theme.ndTextDisplay.resolve(for: colorScheme))
@@ -75,6 +75,7 @@ struct ListView: View {
                         .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
                         .frame(width: 36, height: 36)
                 }
+                overflowMenu
             }
             .padding(.horizontal, Theme.spaceMD)
             .padding(.top, Theme.spaceLG)
@@ -220,50 +221,6 @@ struct ListView: View {
                         .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
                 }
             }
-            ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    Button {
-                        renameText = list.title
-                        showRename = true
-                    } label: {
-                        Label("Rename List", systemImage: "pencil")
-                    }
-
-                    Button {
-                        shareListAsText()
-                    } label: {
-                        Label("Copy as Text", systemImage: "doc.on.doc")
-                    }
-
-                    Divider()
-
-                    if isPublished {
-                        Button {
-                            showUnpublishConfirm = true
-                        } label: {
-                            Label("Unpublish", systemImage: "eye.slash")
-                        }
-                    } else {
-                        Button {
-                            handlePublishTapped()
-                        } label: {
-                            Label("Publish to Discover", systemImage: "sparkles")
-                        }
-                    }
-
-                    Divider()
-
-                    Button(role: .destructive) {
-                        showDeleteConfirm = true
-                    } label: {
-                        Label("Delete List", systemImage: "trash")
-                    }
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 16, weight: .light))
-                        .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
-                }
-            }
         }
         .alert("Rename List", isPresented: $showRename) {
             TextField("List name", text: $renameText)
@@ -283,6 +240,14 @@ struct ListView: View {
         } message: {
             Text("This will permanently delete \"\(list.title)\" and all its items.")
         }
+        .alert("Publish error", isPresented: Binding(
+            get: { publish.lastError != nil },
+            set: { if !$0 { publish.clearError() } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(publish.lastError ?? "")
+        }
         .alert("Unpublish?", isPresented: $showUnpublishConfirm) {
             Button("Unpublish", role: .destructive) {
                 Task { await publish.unpublish(list) }
@@ -291,6 +256,7 @@ struct ListView: View {
         } message: {
             Text("\"\(list.title)\" will be removed from Discover. Your local copy is unchanged.")
         }
+        .enableSwipeBack()
         .sheet(isPresented: $showPublishOnboarding) {
             PublishOnboardingSheet(onFinish: {
                 socialEngaged = true
@@ -318,6 +284,57 @@ struct ListView: View {
             if isNewList || list.items.isEmpty {
                 startAdding()
             }
+        }
+    }
+
+    // MARK: - Overflow menu
+
+    /// Inline ellipsis menu shown alongside search and + in the list header.
+    /// Replaces the previous nav-bar trailing toolbar item so all per-list
+    /// actions live in one place.
+    private var overflowMenu: some View {
+        Menu {
+            Button {
+                renameText = list.title
+                showRename = true
+            } label: {
+                Label("Rename List", systemImage: "pencil")
+            }
+
+            Button {
+                shareListAsText()
+            } label: {
+                Label("Copy as Text", systemImage: "doc.on.doc")
+            }
+
+            Divider()
+
+            if isPublished {
+                Button {
+                    showUnpublishConfirm = true
+                } label: {
+                    Label("Unpublish", systemImage: "eye.slash")
+                }
+            } else {
+                Button {
+                    handlePublishTapped()
+                } label: {
+                    Label("Publish to Discover", systemImage: "sparkles")
+                }
+            }
+
+            Divider()
+
+            Button(role: .destructive) {
+                showDeleteConfirm = true
+            } label: {
+                Label("Delete List", systemImage: "trash")
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 16, weight: .light))
+                .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
+                .frame(width: 36, height: 36)
         }
     }
 

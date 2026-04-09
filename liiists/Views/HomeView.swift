@@ -1,5 +1,12 @@
 import SwiftUI
 
+/// Typed destinations the HomeView NavigationStack pushes alongside list
+/// filenames. Plain strings are still used for the per-list navigation;
+/// this enum is for non-list screens like Discover.
+enum HomeDestination: Hashable {
+    case discover
+}
+
 enum HomeSortOption: String, CaseIterable, Identifiable {
     case manual
     case alphabetical
@@ -182,20 +189,6 @@ struct HomeView: View {
                         .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
                         .frame(width: 32, height: 44)
                 }
-                Menu {
-                    Picker("Sort by", selection: $sortOptionRaw) {
-                        ForEach(HomeSortOption.allCases) { option in
-                            Label(option.label, systemImage: option.icon)
-                                .tag(option.rawValue)
-                        }
-                    }
-                } label: {
-                    Image(systemName: "arrow.up.arrow.down")
-                        .font(.system(size: 18, weight: .light))
-                        .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
-                        .frame(width: 32, height: 44)
-                }
-                accountButton
                 Button {
                     showNewList = true
                 } label: {
@@ -204,6 +197,7 @@ struct HomeView: View {
                         .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
                         .frame(width: 32, height: 44)
                 }
+                overflowMenu
             }
             .padding(.horizontal, Theme.spaceMD)
             .padding(.top, Theme.space3XL)
@@ -278,6 +272,12 @@ struct HomeView: View {
                     .onAppear { deepLinkFocusAdd = false }
             }
         }
+        .navigationDestination(for: HomeDestination.self) { dest in
+            switch dest {
+            case .discover:
+                DiscoverView()
+            }
+        }
         .onChange(of: navigationTarget) { _, filename in
             guard let filename, store.lists.contains(where: { $0.filename == filename }) else { return }
             deepLinkFocusAdd = focusAddField
@@ -293,20 +293,37 @@ struct HomeView: View {
         }
     }
 
-    /// Toolbar account icon — only visible when the user is signed in.
-    /// Tapping opens AccountSheet (T-51d). Hidden state means zero clutter
-    /// for the default unsigned user.
-    @ViewBuilder
-    private var accountButton: some View {
-        if account.isSignedIn {
-            Button {
-                showAccountSheet = true
-            } label: {
-                Image(systemName: "person.crop.circle")
-                    .font(.system(size: 20, weight: .light))
-                    .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
-                    .frame(width: 32, height: 44)
+    /// HomeView overflow menu — consolidates sort, Discover, and account
+    /// actions so the header HStack stays four buttons wide. Sort lives at
+    /// the top because it's the most-used; Discover and Account live below
+    /// a divider and only appear once the user is signed in.
+    private var overflowMenu: some View {
+        Menu {
+            Picker("Sort by", selection: $sortOptionRaw) {
+                ForEach(HomeSortOption.allCases) { option in
+                    Label(option.label, systemImage: option.icon)
+                        .tag(option.rawValue)
+                }
             }
+
+            if account.isSignedIn {
+                Divider()
+                Button {
+                    path.append(HomeDestination.discover)
+                } label: {
+                    Label("Discover lists", systemImage: "sparkles")
+                }
+                Button {
+                    showAccountSheet = true
+                } label: {
+                    Label("Account", systemImage: "person.crop.circle")
+                }
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 20, weight: .light))
+                .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
+                .frame(width: 32, height: 44)
         }
     }
 

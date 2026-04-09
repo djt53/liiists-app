@@ -24,6 +24,11 @@ final class PublishStore: ObservableObject {
     /// Loaded lazily as the feed comes in.
     @Published private(set) var upvotedRecordNames: Set<String> = []
 
+    /// Lists the user has saved for later. Stored as full summaries (not
+    /// just record names) so saved entries remain browsable even after
+    /// they fall out of the trending 7-day window.
+    @Published private(set) var savedSummaries: [PublishedListSummary] = []
+
     @Published private(set) var isLoadingFeed = false
     @Published private(set) var lastError: String?
 
@@ -35,6 +40,7 @@ final class PublishStore: ObservableObject {
     private let defaults = UserDefaults.standard
     private let publishedIndexKey = "liiists.publishedIndex"
     private let upvotedKey = "liiists.upvotedRecordNames"
+    private let savedKey = "liiists.savedSummaries"
 
     private var feedCursor: CKQueryOperation.Cursor?
 
@@ -54,6 +60,10 @@ final class PublishStore: ObservableObject {
         if let arr = defaults.stringArray(forKey: upvotedKey) {
             upvotedRecordNames = Set(arr)
         }
+        if let data = defaults.data(forKey: savedKey),
+           let decoded = try? JSONDecoder().decode([PublishedListSummary].self, from: data) {
+            savedSummaries = decoded
+        }
     }
 
     private func persistPublishedIndex() {
@@ -64,8 +74,36 @@ final class PublishStore: ObservableObject {
         defaults.set(Array(upvotedRecordNames), forKey: upvotedKey)
     }
 
+    private func persistSaved() {
+        if let data = try? JSONEncoder().encode(savedSummaries) {
+            defaults.set(data, forKey: savedKey)
+        }
+    }
+
     func isPublished(filename: String) -> Bool {
         publishedIndex[filename] != nil
+    }
+
+    func isSaved(_ summary: PublishedListSummary) -> Bool {
+        savedSummaries.contains(where: { $0.recordName == summary.recordName })
+    }
+
+    /// Toggle whether a published list lives in the user's Saved column.
+    /// Local-only; doesn't write to CloudKit.
+    func toggleSaved(_ summary: PublishedListSummary) {
+        if let idx = savedSummaries.firstIndex(where: { $0.recordName == summary.recordName }) {
+            savedSummaries.remove(at: idx)
+        } else {
+            // Capture the current live summary so saved entries reflect the
+            // upvote count and items at save time.
+            let live = feed.first(where: { $0.recordName == summary.recordName }) ?? summary
+            savedSummaries.insert(live, at: 0)
+        }
+        persistSaved()
+    }
+
+    func clearError() {
+        lastError = nil
     }
 
     // MARK: - Publish / unpublish
@@ -73,8 +111,10 @@ final class PublishStore: ObservableObject {
     /// Publish a list to the public DB. If it's already published, performs
     /// an update instead (auto-republish — decision 006).
     func publish(_ list: ItemList) async {
+        print("[PublishStore] publish() called — signedIn=\(account.isSignedIn), filename=\(list.filename)")
         guard account.isSignedIn else {
             lastError = "Sign in to publish."
+            print("[PublishStore] publish aborted — not signed in")
             return
         }
 
@@ -85,8 +125,12 @@ final class PublishStore: ObservableObject {
                 try await createPublished(list)
             }
             lastError = nil
+            print("[PublishStore] publish succeeded")
         } catch {
-            lastError = (error as NSError).localizedDescription
+            let nsError = error as NSError
+            lastError = "\(nsError.localizedDescription) [\(nsError.domain) \(nsError.code)]"
+            print("[PublishStore] publish FAILED: \(nsError.domain) \(nsError.code) — \(nsError.localizedDescription)")
+            print("[PublishStore] userInfo: \(nsError.userInfo)")
         }
     }
 
@@ -94,7 +138,9 @@ final class PublishStore: ObservableObject {
         let record = CKRecord(recordType: CKSchema.PublishedList.recordType)
         applyListFields(list, to: record, isUpdate: false)
 
+        print("[PublishStore] saving new PublishedList for \(list.filename) — title=\(list.title), items=\(list.items.count)")
         let saved = try await publicDB.save(record)
+        print("[PublishStore] saved PublishedList recordName=\(saved.recordID.recordName)")
         publishedIndex[list.filename] = saved.recordID.recordName
         persistPublishedIndex()
     }
@@ -138,54 +184,59 @@ final class PublishStore: ObservableObject {
     }
 
     private func applyListFields(_ list: ItemList, to record: CKRecord, isUpdate: Bool) {
-        let now = Date()
+        // Decision 010: only client-controlled fields go on the record. Author,
+        // timestamps, and upvote count are derived from CK system fields and
+        // separately-counted Upvote records on read.
         let itemTexts = list.items.map { $0.text }
         record[CKSchema.PublishedList.Field.title] = list.title as CKRecordValue
         record[CKSchema.PublishedList.Field.items] = itemTexts.joined(separator: "\n") as CKRecordValue
         record[CKSchema.PublishedList.Field.itemCount] = itemTexts.count as CKRecordValue
         record[CKSchema.PublishedList.Field.authorDisplayName] = (account.displayName ?? "") as CKRecordValue
-        record[CKSchema.PublishedList.Field.updatedAt] = now as CKRecordValue
         record[CKSchema.PublishedList.Field.sourceFilename] = list.filename as CKRecordValue
-
-        if !isUpdate {
-            record[CKSchema.PublishedList.Field.publishedAt] = now as CKRecordValue
-            record[CKSchema.PublishedList.Field.upvoteCount] = 0 as CKRecordValue
-            if let userID = account.ckUserRecordID {
-                let ref = CKRecord.Reference(recordID: userID, action: .none)
-                record[CKSchema.PublishedList.Field.authorRef] = ref
-            }
-        }
     }
 
     // MARK: - Discover feed
 
-    /// Load the first page of the top-by-upvotes-7d feed. Resets pagination.
+    /// Load the first page of the top-by-upvotes-7d feed. Resets pagination
+    /// and seeds the feed with the static SeedFeed entries so the surface
+    /// looks alive before real users start publishing.
     func loadFeed() async {
         isLoadingFeed = true
         feedCursor = nil
-        feed = []
+        feed = SeedFeed.lists
         await fetchNextFeedPage()
+        sortFeed()
         isLoadingFeed = false
     }
 
+    /// Sort the merged feed by upvotes desc then publishedAt desc — matches
+    /// the CK query ordering so seeds and real records interleave naturally.
+    private func sortFeed() {
+        feed.sort { a, b in
+            if a.upvoteCount != b.upvoteCount { return a.upvoteCount > b.upvoteCount }
+            return a.publishedAt > b.publishedAt
+        }
+    }
+
     /// Fetch the next page of the feed using the saved cursor.
+    ///
+    /// Decision 010: feed is queried by CK's `creationDate` system field
+    /// (server-stamped, untamperable). Upvote counts are computed by a
+    /// secondary query against the Upvote record type and merged in
+    /// before sort. The trending sort is then performed client-side.
     func fetchNextFeedPage() async {
         let sevenDaysAgo = Date(timeIntervalSinceNow: -7 * 24 * 60 * 60)
 
         let query: CKQuery
         if feedCursor == nil {
-            let predicate = NSPredicate(
-                format: "%K > %@",
-                CKSchema.PublishedList.Field.publishedAt,
-                sevenDaysAgo as NSDate
-            )
+            // CK exposes the system creationDate via the special key
+            // "creationDate" in NSPredicate.
+            let predicate = NSPredicate(format: "creationDate > %@", sevenDaysAgo as NSDate)
             query = CKQuery(recordType: CKSchema.PublishedList.recordType, predicate: predicate)
             query.sortDescriptors = [
-                NSSortDescriptor(key: CKSchema.PublishedList.Field.upvoteCount, ascending: false),
-                NSSortDescriptor(key: CKSchema.PublishedList.Field.publishedAt, ascending: false)
+                NSSortDescriptor(key: "creationDate", ascending: false)
             ]
         } else {
-            // Paginated continuations don't take a fresh query.
             query = CKQuery(recordType: CKSchema.PublishedList.recordType, predicate: NSPredicate(value: true))
         }
 
@@ -197,11 +248,19 @@ final class PublishStore: ObservableObject {
                 result = try await publicDB.records(matching: query, resultsLimit: 25)
             }
 
-            let newSummaries: [PublishedListSummary] = result.matchResults.compactMap { _, recordResult in
+            var newSummaries: [PublishedListSummary] = result.matchResults.compactMap { _, recordResult in
                 guard case .success(let record) = recordResult else { return nil }
                 return PublishedListSummary(record: record)
             }
+
+            // Inject upvote counts by querying Upvote records for the page.
+            let counts = await fetchUpvoteCounts(for: newSummaries.map { $0.recordName })
+            for i in newSummaries.indices {
+                newSummaries[i].upvoteCount = counts[newSummaries[i].recordName] ?? 0
+            }
+
             feed.append(contentsOf: newSummaries)
+            sortFeed()
             feedCursor = result.queryCursor
             lastError = nil
         } catch {
@@ -209,13 +268,62 @@ final class PublishStore: ObservableObject {
         }
     }
 
+    /// Returns a map from PublishedList recordName → upvote count, computed
+    /// by counting Upvote records that reference each list. Single CK query
+    /// per page (uses an IN predicate), then bucket client-side.
+    private func fetchUpvoteCounts(for recordNames: [String]) async -> [String: Int] {
+        guard !recordNames.isEmpty else { return [:] }
+        let refs = recordNames.map { CKRecord.Reference(recordID: CKRecord.ID(recordName: $0), action: .deleteSelf) }
+        let predicate = NSPredicate(format: "%K IN %@", CKSchema.Upvote.Field.listRef, refs)
+        let query = CKQuery(recordType: CKSchema.Upvote.recordType, predicate: predicate)
+
+        do {
+            // CK caps a single query response. 200 is plenty for our 25-record
+            // page; if a single list has > 200 votes we'll undercount and
+            // we can iterate via cursor. Acceptable at v1 scale.
+            let result = try await publicDB.records(matching: query, resultsLimit: 200)
+            var counts: [String: Int] = [:]
+            for (_, recordResult) in result.matchResults {
+                guard case .success(let record) = recordResult,
+                      let ref = record[CKSchema.Upvote.Field.listRef] as? CKRecord.Reference else { continue }
+                counts[ref.recordID.recordName, default: 0] += 1
+            }
+            return counts
+        } catch {
+            // Don't fail the whole feed load on a counting error — just show
+            // zero votes and surface the error.
+            print("[PublishStore] fetchUpvoteCounts failed: \(error.localizedDescription)")
+            return [:]
+        }
+    }
+
     // MARK: - Upvote
 
     /// Toggle an upvote for the given published list. Idempotent: tapping
-    /// twice removes the vote. Updates the denormalized counter on
-    /// PublishedList in the same operation; uses ifServerRecordUnchanged
-    /// with one retry to handle counter races (decision 006, T-51a notes).
+    /// twice removes the vote. Decision 010: there is no denormalized
+    /// counter — we just create or delete the Upvote record. The displayed
+    /// count is updated optimistically in the in-memory feed and recomputed
+    /// from a fresh count query on the next feed refresh.
     func toggleUpvote(for summary: PublishedListSummary) async {
+        // Seeds are local-only fixtures — toggle the in-memory count and
+        // local upvote set without touching CloudKit.
+        if summary.isSeed {
+            let isUpvoted = upvotedRecordNames.contains(summary.recordName)
+            if isUpvoted {
+                upvotedRecordNames.remove(summary.recordName)
+                if let idx = feed.firstIndex(where: { $0.recordName == summary.recordName }) {
+                    feed[idx].upvoteCount = max(0, feed[idx].upvoteCount - 1)
+                }
+            } else {
+                upvotedRecordNames.insert(summary.recordName)
+                if let idx = feed.firstIndex(where: { $0.recordName == summary.recordName }) {
+                    feed[idx].upvoteCount += 1
+                }
+            }
+            persistUpvoted()
+            return
+        }
+
         guard account.isSignedIn, let voterID = account.ckUserRecordID else {
             lastError = "Sign in to upvote."
             return
@@ -239,7 +347,7 @@ final class PublishStore: ObservableObject {
                 return nil
             }.first
 
-            let delta: Int64
+            let delta: Int
             if let existing {
                 _ = try await publicDB.deleteRecord(withID: existing.recordID)
                 upvotedRecordNames.remove(summary.recordName)
@@ -254,40 +362,14 @@ final class PublishStore: ObservableObject {
             }
             persistUpvoted()
 
-            try await applyUpvoteDelta(to: listRecordID, delta: delta)
+            // Optimistic local update — the canonical count comes from the
+            // next feed refresh / fetchUpvoteCounts call.
+            if let idx = feed.firstIndex(where: { $0.recordName == listRecordID.recordName }) {
+                feed[idx].upvoteCount = max(0, feed[idx].upvoteCount + delta)
+            }
             lastError = nil
         } catch {
             lastError = (error as NSError).localizedDescription
-        }
-    }
-
-    /// Read-modify-write the upvoteCount counter with one retry on conflict.
-    private func applyUpvoteDelta(to listRecordID: CKRecord.ID, delta: Int64, retry: Bool = true) async throws {
-        do {
-            let record = try await publicDB.record(for: listRecordID)
-            let current = (record[CKSchema.PublishedList.Field.upvoteCount] as? Int64) ?? 0
-            record[CKSchema.PublishedList.Field.upvoteCount] = max(0, current + delta) as CKRecordValue
-
-            let op = CKModifyRecordsOperation(recordsToSave: [record], recordIDsToDelete: nil)
-            op.savePolicy = .ifServerRecordUnchanged
-            op.qualityOfService = .userInitiated
-
-            try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
-                op.modifyRecordsResultBlock = { result in
-                    switch result {
-                    case .success: cont.resume()
-                    case .failure(let error): cont.resume(throwing: error)
-                    }
-                }
-                publicDB.add(op)
-            }
-
-            // Optimistic local update of the in-memory feed copy.
-            if let idx = feed.firstIndex(where: { $0.recordName == listRecordID.recordName }) {
-                feed[idx].upvoteCount = max(0, feed[idx].upvoteCount + Int(delta))
-            }
-        } catch let error as CKError where error.code == .serverRecordChanged && retry {
-            try await applyUpvoteDelta(to: listRecordID, delta: delta, retry: false)
         }
     }
 }
@@ -296,7 +378,7 @@ final class PublishStore: ObservableObject {
 
 /// Lightweight projection of a PublishedList for feed rendering. Avoids
 /// passing CKRecord around the view layer.
-struct PublishedListSummary: Identifiable, Equatable {
+struct PublishedListSummary: Identifiable, Equatable, Hashable, Codable {
     let recordName: String
     let title: String
     let items: [String]
@@ -306,11 +388,31 @@ struct PublishedListSummary: Identifiable, Equatable {
     var upvoteCount: Int
 
     var id: String { recordName }
+    var isSeed: Bool { SeedFeed.isSeed(recordName: recordName) }
+
+    init(
+        recordName: String,
+        title: String,
+        items: [String],
+        authorDisplayName: String?,
+        publishedAt: Date,
+        upvoteCount: Int
+    ) {
+        self.recordName = recordName
+        self.title = title
+        self.items = items
+        self.itemCount = items.count
+        self.authorDisplayName = authorDisplayName
+        self.publishedAt = publishedAt
+        self.upvoteCount = upvoteCount
+    }
 
     init?(record: CKRecord) {
+        // Decision 010: trust CK system fields over client-set ones.
+        // creationDate is server-stamped and untamperable.
         guard
             let title = record[CKSchema.PublishedList.Field.title] as? String,
-            let publishedAt = record[CKSchema.PublishedList.Field.publishedAt] as? Date
+            let publishedAt = record.creationDate
         else { return nil }
 
         self.recordName = record.recordID.recordName
@@ -321,6 +423,9 @@ struct PublishedListSummary: Identifiable, Equatable {
         let name = record[CKSchema.PublishedList.Field.authorDisplayName] as? String
         self.authorDisplayName = (name?.isEmpty == false) ? name : nil
         self.publishedAt = publishedAt
-        self.upvoteCount = Int((record[CKSchema.PublishedList.Field.upvoteCount] as? Int64) ?? 0)
+        // upvoteCount is filled in by PublishStore.fetchUpvoteCounts after
+        // the initial decode — start at zero so the client never trusts a
+        // client-supplied counter.
+        self.upvoteCount = 0
     }
 }

@@ -28,22 +28,20 @@ enum CKSchema {
             /// item prefix (`- `) is stripped before storing.
             static let items = "items"
             /// Denormalized count of items, kept in sync on every publish/update.
-            /// Sortable so the Discover feed can show "X items" without fetching
-            /// the body.
             static let itemCount = "itemCount"
-            /// CKReference to the author's CKUser record (public DB).
-            static let authorRef = "authorRef"
             /// Snapshot of the author's chosen display name at publish/update time.
-            /// `nil` means anonymous (decision 006).
+            /// `nil` means anonymous (decision 006). Authority for "who wrote this"
+            /// is the CK system field `creatorUserRecordID`, not this — this is
+            /// just the rendering hint.
             static let authorDisplayName = "authorDisplayName"
-            static let publishedAt = "publishedAt"
-            static let updatedAt = "updatedAt"
-            /// Denormalized counter incremented client-side on every Upvote create.
-            /// Eventually consistent — fine at v1 scale (decision 006).
-            static let upvoteCount = "upvoteCount"
             /// Original local filename, used by the author to find/unpublish their
             /// own list. Not exposed in the feed.
             static let sourceFilename = "sourceFilename"
+
+            // Removed (decision 010 — security hardening):
+            // - publishedAt / updatedAt → use record.creationDate / .modificationDate
+            // - authorRef → use record.creatorUserRecordID
+            // - upvoteCount → count Upvote records on read instead of denormalizing
         }
     }
 
