@@ -37,6 +37,12 @@ final class PublishStore: ObservableObject {
     /// tap is in flight.
     @Published private(set) var publishingFilenames: Set<String> = []
 
+    /// `true` while the feed has more pages to fetch. Goes false when CK
+    /// returns a nil cursor at the end of pagination, which prevents the
+    /// "infinite scroll" onAppear handler from re-running the first-page
+    /// query and duplicating rows.
+    @Published private(set) var feedHasMore: Bool = true
+
     // MARK: - Dependencies
 
     private unowned let account: AccountStore
@@ -221,6 +227,7 @@ final class PublishStore: ObservableObject {
     func loadFeed() async {
         isLoadingFeed = true
         feedCursor = nil
+        feedHasMore = true
         feed = SeedFeed.lists
         await fetchNextFeedPage()
         sortFeed()
@@ -243,6 +250,11 @@ final class PublishStore: ObservableObject {
     /// secondary query against the Upvote record type and merged in
     /// before sort. The trending sort is then performed client-side.
     func fetchNextFeedPage() async {
+        // Skip if there's nothing more to load. Without this, the infinite
+        // scroll onAppear hook re-runs the first-page query each time the
+        // last row appears and dupes records into the feed.
+        guard feedHasMore else { return }
+
         let sevenDaysAgo = Date(timeIntervalSinceNow: -7 * 24 * 60 * 60)
 
         let query: CKQuery
@@ -277,9 +289,14 @@ final class PublishStore: ObservableObject {
                 newSummaries[i].upvoteCount = counts[newSummaries[i].recordName] ?? 0
             }
 
-            feed.append(contentsOf: newSummaries)
+            // Defense-in-depth dedupe: never let the same recordName appear
+            // twice in the in-memory feed.
+            let existingNames = Set(feed.map { $0.recordName })
+            let deduped = newSummaries.filter { !existingNames.contains($0.recordName) }
+            feed.append(contentsOf: deduped)
             sortFeed()
             feedCursor = result.queryCursor
+            feedHasMore = (result.queryCursor != nil)
             lastError = nil
         } catch {
             lastError = (error as NSError).localizedDescription
