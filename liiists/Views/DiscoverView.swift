@@ -60,7 +60,13 @@ struct DiscoverView: View {
                 await publish.loadFeed()
             }
         }
-        .onAppear { runTitleAnimation() }
+        .onAppear {
+            runTitleAnimation()
+            Analytics.discoverViewed(tab: section.rawValue)
+        }
+        .onChange(of: section) { _, newValue in
+            Analytics.discoverTabSwitched(to: newValue.rawValue)
+        }
         .enableSwipeBack()
     }
 

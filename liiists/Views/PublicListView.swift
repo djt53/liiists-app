@@ -70,6 +70,9 @@ struct PublicListView: View {
             Text("New list with one item: \(newListPromptItem ?? "")")
         }
         .enableSwipeBack()
+        .onAppear {
+            Analytics.publicListViewed(title: summary.title, author: summary.authorDisplayName)
+        }
     }
 
     // MARK: - Header
@@ -109,7 +112,9 @@ struct PublicListView: View {
 
     private var upvotePill: some View {
         Button {
+            let willUpvote = !isUpvoted
             Task { await publish.toggleUpvote(for: liveSummary) }
+            Analytics.upvoteToggled(listTitle: liveSummary.title, isUpvoted: willUpvote)
         } label: {
             HStack(spacing: Theme.spaceXS) {
                 Image(systemName: isUpvoted ? "arrowtriangle.up.fill" : "arrowtriangle.up")
@@ -128,7 +133,9 @@ struct PublicListView: View {
 
     private var savePill: some View {
         Button {
+            let willSave = !isSaved
             publish.toggleSaved(liveSummary)
+            Analytics.saveToggled(listTitle: liveSummary.title, isSaved: willSave)
         } label: {
             HStack(spacing: Theme.spaceXS) {
                 Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
@@ -250,5 +257,6 @@ struct PublicListView: View {
         newList.items.append(contentsOf: liveSummary.items.map { ListItem(text: $0) })
         store.update(newList)
         copyConfirm = true
+        Analytics.listCopiedToLocal(title: liveSummary.title, itemCount: liveSummary.items.count)
     }
 }

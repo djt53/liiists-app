@@ -83,6 +83,60 @@ enum Analytics {
         ])
     }
 
+    // MARK: - Discover / Social
+
+    static func discoverViewed(tab: String) {
+        PostHogSDK.shared.capture("discover_viewed", properties: [
+            "tab": tab,
+        ])
+    }
+
+    static func discoverTabSwitched(to tab: String) {
+        PostHogSDK.shared.capture("discover_tab_switched", properties: [
+            "tab": tab,
+        ])
+    }
+
+    static func publicListViewed(title: String, author: String?) {
+        PostHogSDK.shared.capture("public_list_viewed", properties: [
+            "list_title": title,
+            "author": author ?? "anonymous",
+        ])
+    }
+
+    static func upvoteToggled(listTitle: String, isUpvoted: Bool) {
+        PostHogSDK.shared.capture("upvote_toggled", properties: [
+            "list_title": listTitle,
+            "is_upvoted": isUpvoted,
+        ])
+    }
+
+    static func saveToggled(listTitle: String, isSaved: Bool) {
+        PostHogSDK.shared.capture("save_toggled", properties: [
+            "list_title": listTitle,
+            "is_saved": isSaved,
+        ])
+    }
+
+    static func listCopiedToLocal(title: String, itemCount: Int) {
+        PostHogSDK.shared.capture("list_copied_to_local", properties: [
+            "list_title": title,
+            "item_count": itemCount,
+        ])
+    }
+
+    static func listPublished(title: String) {
+        PostHogSDK.shared.capture("list_published", properties: [
+            "list_title": title,
+        ])
+    }
+
+    static func listUnpublished(title: String) {
+        PostHogSDK.shared.capture("list_unpublished", properties: [
+            "list_title": title,
+        ])
+    }
+
     // MARK: - Share Extension
 
     static func shareExtensionUsed(listTitle: String, contentType: String) {

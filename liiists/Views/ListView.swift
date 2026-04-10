@@ -251,6 +251,7 @@ struct ListView: View {
         .alert("Unpublish?", isPresented: $showUnpublishConfirm) {
             Button("Unpublish", role: .destructive) {
                 Task { await publish.unpublish(list) }
+                Analytics.listUnpublished(title: list.title)
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -365,6 +366,7 @@ struct ListView: View {
     private func handlePublishTapped() {
         if account.isSignedIn {
             Task { await publish.publish(list) }
+            Analytics.listPublished(title: list.title)
         } else {
             publishAfterOnboarding = true
             showPublishOnboarding = true
