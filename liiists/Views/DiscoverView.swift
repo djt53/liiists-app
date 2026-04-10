@@ -97,7 +97,7 @@ struct DiscoverView: View {
             Spacer()
         }
         .padding(.horizontal, Theme.spaceMD)
-        .padding(.top, Theme.space3XL)
+        .padding(.top, Theme.spaceLG)
         .padding(.bottom, Theme.spaceLG)
     }
 
