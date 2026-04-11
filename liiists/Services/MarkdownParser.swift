@@ -49,36 +49,90 @@ enum MarkdownParser {
 
         // Extract known fields
         let typeStr = frontmatter.removeValue(forKey: "type") ?? "list"
-        let listType: ItemList.ListType = typeStr == "checklist" ? .checklist : .list
+        let listType: ItemList.ListType
+        switch typeStr {
+        case "checklist": listType = .checklist
+        case "streak": listType = .streak
+        default: listType = .list
+        }
         let titleFromFM = frontmatter.removeValue(forKey: "title")
         let createdStr = frontmatter.removeValue(forKey: "created")
         let createdDate = createdStr.flatMap { iso8601Formatter.date(from: $0) }
 
-        // Scan for H1 title and items
+        // Scan for H1 title and items (or streak sections)
         var h1Title: String?
         var items: [ListItem] = []
+        var streakSections: [StreakSection] = []
 
-        while index < lines.count {
-            let line = lines[index]
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            index += 1
+        if listType == .streak {
+            // Streak parsing: H2 headings as sections, cadence lines, date entries
+            var currentSection: StreakSection?
 
-            // H1 heading
-            if trimmed.hasPrefix("# ") && h1Title == nil {
-                h1Title = String(trimmed.dropFirst(2))
-                continue
+            while index < lines.count {
+                let line = lines[index]
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                index += 1
+
+                // H1 heading (title)
+                if trimmed.hasPrefix("# ") && !trimmed.hasPrefix("## ") && h1Title == nil {
+                    h1Title = String(trimmed.dropFirst(2))
+                    continue
+                }
+
+                // H2 heading → new streak section
+                if trimmed.hasPrefix("## ") {
+                    if let section = currentSection {
+                        streakSections.append(section)
+                    }
+                    currentSection = StreakSection(name: String(trimmed.dropFirst(3)))
+                    continue
+                }
+
+                // Cadence line (immediately after H2)
+                if trimmed.hasPrefix("cadence:"), currentSection != nil {
+                    let value = String(trimmed.dropFirst(8)).trimmingCharacters(in: .whitespaces)
+                    currentSection?.cadence = StreakCadence.from(value)
+                    continue
+                }
+
+                // Date entry: - YYYY-MM-DD
+                if trimmed.hasPrefix("- "), currentSection != nil {
+                    let dateStr = String(trimmed.dropFirst(2)).trimmingCharacters(in: .whitespaces)
+                    if let date = iso8601Formatter.date(from: dateStr) {
+                        currentSection?.entries.append(date)
+                    }
+                    continue
+                }
             }
 
-            // Checklist item: - [ ] or - [x]
-            if let item = parseChecklistItem(trimmed) {
-                items.append(item)
-                continue
+            // Don't forget the last section
+            if let section = currentSection {
+                streakSections.append(section)
             }
+        } else {
+            // Standard list/checklist parsing
+            while index < lines.count {
+                let line = lines[index]
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                index += 1
 
-            // Plain bullet item: - text
-            if let item = parseBulletItem(trimmed) {
-                items.append(item)
-                continue
+                // H1 heading
+                if trimmed.hasPrefix("# ") && h1Title == nil {
+                    h1Title = String(trimmed.dropFirst(2))
+                    continue
+                }
+
+                // Checklist item: - [ ] or - [x]
+                if let item = parseChecklistItem(trimmed) {
+                    items.append(item)
+                    continue
+                }
+
+                // Plain bullet item: - text
+                if let item = parseBulletItem(trimmed) {
+                    items.append(item)
+                    continue
+                }
             }
         }
 
@@ -91,6 +145,7 @@ enum MarkdownParser {
             type: listType,
             createdDate: createdDate,
             items: items,
+            streakSections: streakSections,
             extraFrontmatter: frontmatter
         )
     }
@@ -141,13 +196,25 @@ enum MarkdownParser {
             lines.append("")
         }
 
-        // Items
-        for item in list.items {
-            switch list.type {
-            case .checklist:
+        // Items / sections
+        switch list.type {
+        case .streak:
+            for (i, section) in list.streakSections.enumerated() {
+                if i > 0 { lines.append("") }
+                lines.append("## \(section.name)")
+                lines.append("cadence: \(section.cadence.markdownString)")
+                lines.append("")
+                for date in section.entries {
+                    lines.append("- \(iso8601Formatter.string(from: date))")
+                }
+            }
+        case .checklist:
+            for item in list.items {
                 let check = item.isChecked ? "x" : " "
                 lines.append("- [\(check)] \(item.text)")
-            case .list:
+            }
+        case .list:
+            for item in list.items {
                 lines.append("- \(item.text)")
             }
         }

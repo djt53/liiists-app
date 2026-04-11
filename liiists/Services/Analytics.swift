@@ -137,6 +137,22 @@ enum Analytics {
         ])
     }
 
+    // MARK: - Streaks
+
+    static func streakLogged(listTitle: String, habit: String) {
+        PostHogSDK.shared.capture("streak_logged", properties: [
+            "list_title": listTitle,
+            "habit": habit,
+        ])
+    }
+
+    static func streakListCreated(title: String, habitCount: Int) {
+        PostHogSDK.shared.capture("streak_list_created", properties: [
+            "list_title": title,
+            "habit_count": habitCount,
+        ])
+    }
+
     // MARK: - Share Extension
 
     static func shareExtensionUsed(listTitle: String, contentType: String) {

@@ -6,7 +6,7 @@ import AppIntents
 
 struct AllListsEntry: TimelineEntry {
     let date: Date
-    let lists: [(title: String, itemCount: Int, checkedCount: Int, isChecklist: Bool, filename: String)]
+    let lists: [(title: String, itemCount: Int, checkedCount: Int, isChecklist: Bool, isStreak: Bool, streakCount: Int, filename: String)]
 }
 
 // MARK: - Provider
@@ -14,9 +14,9 @@ struct AllListsEntry: TimelineEntry {
 struct AllListsProvider: TimelineProvider {
     func placeholder(in context: Context) -> AllListsEntry {
         AllListsEntry(date: .now, lists: [
-            ("Books", 5, 2, true, "books.md"),
-            ("Groceries", 8, 0, false, "groceries.md"),
-            ("Movies", 3, 1, true, "movies.md"),
+            ("Books", 5, 2, true, false, 0, "books.md"),
+            ("Groceries", 8, 0, false, false, 0, "groceries.md"),
+            ("Habits", 0, 0, false, true, 3, "habits.md"),
         ])
     }
 
@@ -32,7 +32,13 @@ struct AllListsProvider: TimelineProvider {
     private func loadEntry() -> AllListsEntry {
         let store = IntentListStore()
         let lists = store.loadAll().map { list in
-            (title: list.title, itemCount: list.itemCount, checkedCount: list.checkedCount, isChecklist: list.type == .checklist, filename: list.filename)
+            (title: list.title,
+             itemCount: list.itemCount,
+             checkedCount: list.checkedCount,
+             isChecklist: list.type == .checklist,
+             isStreak: list.type == .streak,
+             streakCount: list.streakSections.count,
+             filename: list.filename)
         }
         return AllListsEntry(date: .now, lists: lists)
     }
@@ -66,16 +72,20 @@ struct AllListsWidgetView: View {
             ForEach(Array(visibleLists.enumerated()), id: \.offset) { _, list in
                 Link(destination: URL(string: "liiists://list/\(list.filename)")!) {
                     HStack(spacing: 6) {
-                        Image(systemName: list.isChecklist ? "checklist" : "list.bullet")
+                        Image(systemName: list.isStreak ? "flame" : (list.isChecklist ? "checklist" : "list.bullet"))
                             .font(.system(size: 12, weight: .light))
-                            .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
+                            .foregroundStyle(list.isStreak ? Theme.ndAccent : Theme.ndTextSecondary.resolve(for: colorScheme))
                             .frame(width: 16)
                         Text(list.title)
                             .font(Theme.bodyFont(size: 14))
                             .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
                             .lineLimit(1)
                         Spacer()
-                        if list.isChecklist && list.itemCount > 0 {
+                        if list.isStreak && list.streakCount > 0 {
+                            Text("\(list.streakCount) streak\(list.streakCount == 1 ? "" : "s")")
+                                .font(Theme.labelFont(size: 10))
+                                .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
+                        } else if list.isChecklist && list.itemCount > 0 {
                             Text("\(list.checkedCount)/\(list.itemCount)")
                                 .font(Theme.labelFont(size: 10))
                                 .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))

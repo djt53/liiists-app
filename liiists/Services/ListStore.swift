@@ -79,7 +79,7 @@ final class ListStore: ObservableObject {
         save(list)
         lists.append(list)
         lists.sort { $0.title < $1.title }
-        Analytics.listCreated(title: title, type: type == .checklist ? "checklist" : "list")
+        Analytics.listCreated(title: title, type: type.rawValue)
         return list
     }
 

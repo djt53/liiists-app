@@ -53,7 +53,8 @@ struct QuickAddRowProvider: TimelineProvider {
         let recentLists: [(title: String, filename: String, isChecklist: Bool)] = mdFiles.compactMap { url in
             guard let content = try? String(contentsOf: url, encoding: .utf8) else { return nil }
             let list = MarkdownParser.parse(content: content, filename: url.lastPathComponent)
-            return (title: list.title, filename: list.filename, isChecklist: list.type == .checklist)
+            let icon: Bool = list.type == .checklist // streak lists use different widget
+            return (title: list.title, filename: list.filename, isChecklist: icon)
         }
 
         return QuickAddRowEntry(date: .now, recentLists: recentLists)

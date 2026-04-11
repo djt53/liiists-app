@@ -10,12 +10,16 @@ struct ItemList: Identifiable, Equatable {
     var modifiedDate: Date?
     var items: [ListItem]
 
+    /// Streak habits — only populated when `type == .streak`.
+    var streakSections: [StreakSection]
+
     /// Extra frontmatter keys we don't recognize — preserved on round-trip.
     var extraFrontmatter: [String: String]
 
     enum ListType: String, Equatable {
         case list
         case checklist
+        case streak
     }
 
     init(
@@ -26,6 +30,7 @@ struct ItemList: Identifiable, Equatable {
         createdDate: Date? = nil,
         modifiedDate: Date? = nil,
         items: [ListItem] = [],
+        streakSections: [StreakSection] = [],
         extraFrontmatter: [String: String] = [:]
     ) {
         self.id = id
@@ -35,6 +40,7 @@ struct ItemList: Identifiable, Equatable {
         self.createdDate = createdDate
         self.modifiedDate = modifiedDate
         self.items = items
+        self.streakSections = streakSections
         self.extraFrontmatter = extraFrontmatter
     }
 

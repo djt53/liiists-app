@@ -48,10 +48,17 @@ struct CreateListIntent: AppIntent {
         let store = IntentListStore()
 
         let filename = ItemList.filenameFromTitle(name)
+        let itemListType: ItemList.ListType
+        switch listType {
+        case .checklist: itemListType = .checklist
+        case .streak: itemListType = .streak
+        case .list: itemListType = .list
+        }
+
         let list = ItemList(
             filename: filename,
             title: name,
-            type: listType == .checklist ? .checklist : .list,
+            type: itemListType,
             createdDate: Date(),
             items: []
         )
@@ -117,16 +124,62 @@ struct LiiistsShortcuts: AppShortcutsProvider {
     }
 }
 
+// MARK: - Log Streak Intent
+
+struct LogStreakIntent: AppIntent {
+    static var title: LocalizedStringResource = "Log Streak"
+    static var description: IntentDescription = "Log today's entry for a streak"
+    static var openAppWhenRun: Bool = false
+
+    @Parameter(title: "List Name")
+    var listName: String
+
+    @Parameter(title: "Streak Name")
+    var streakName: String
+
+    func perform() async throws -> some IntentResult & ReturnsValue<String> {
+        let store = IntentListStore()
+        guard var list = store.find(name: listName), list.type == .streak else {
+            throw IntentError.listNotFound(listName)
+        }
+
+        guard let idx = list.streakSections.firstIndex(where: {
+            $0.name.lowercased() == streakName.lowercased()
+        }) else {
+            throw IntentError.listNotFound("\(listName)/\(streakName)")
+        }
+
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let alreadyLogged = list.streakSections[idx].entries.contains {
+            calendar.startOfDay(for: $0) == today
+        }
+
+        if !alreadyLogged {
+            list.streakSections[idx].entries.insert(today, at: 0)
+            store.save(list)
+        }
+
+        return .result(value: "Logged \(streakName) in \(list.title)")
+    }
+
+    static var parameterSummary: some ParameterSummary {
+        Summary("Log \(\.$streakName) in \(\.$listName)")
+    }
+}
+
 // MARK: - Intent List Type
 
 enum IntentListType: String, AppEnum {
     case list
     case checklist
+    case streak
 
     static var typeDisplayRepresentation: TypeDisplayRepresentation = "List Type"
     static var caseDisplayRepresentations: [IntentListType: DisplayRepresentation] = [
         .list: "List",
         .checklist: "Checklist",
+        .streak: "Streak",
     ]
 }
 

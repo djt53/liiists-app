@@ -8,5 +8,6 @@ struct LiiistsWidgetBundle: WidgetBundle {
         AllListsWidget()
         QuickAddWidget()
         QuickAddRowWidget()
+        StreakWidget()
     }
 }

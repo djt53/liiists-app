@@ -44,6 +44,8 @@ struct HomeView: View {
     @State private var showNewList = false
     @State private var newListTitle = ""
     @State private var newListType: ItemList.ListType = .list
+    @State private var showNewStreakList = false
+    @State private var newStreakTitle = ""
     @State private var searchText = ""
     @State private var showSearch = false
     @State private var animatingCharIndex: Int? = nil
@@ -149,6 +151,27 @@ struct HomeView: View {
                     },
                     onCancel: {
                         showNewList = false
+                    }
+                )
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+            }
+            .sheet(isPresented: $showNewStreakList) {
+                NewStreakListSheet(
+                    title: $newStreakTitle,
+                    onCreate: {
+                        let trimmed = newStreakTitle.trimmingCharacters(in: .whitespaces)
+                        guard !trimmed.isEmpty else { return }
+                        let newList = store.create(title: trimmed, type: .streak)
+                        Theme.mediumHaptic()
+                        newStreakTitle = ""
+                        showNewStreakList = false
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            path.append(newList.filename)
+                        }
+                    },
+                    onCancel: {
+                        showNewStreakList = false
                     }
                 )
                 .presentationDetents([.medium])
@@ -268,8 +291,13 @@ struct HomeView: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(for: String.self) { filename in
             if let list = store.lists.first(where: { $0.filename == filename }) {
-                ListView(list: list, focusAddField: deepLinkFocusAdd)
-                    .onAppear { deepLinkFocusAdd = false }
+                if list.type == .streak {
+                    StreakListView(list: list)
+                        .onAppear { deepLinkFocusAdd = false }
+                } else {
+                    ListView(list: list, focusAddField: deepLinkFocusAdd)
+                        .onAppear { deepLinkFocusAdd = false }
+                }
             }
         }
         .navigationDestination(for: HomeDestination.self) { dest in
@@ -299,6 +327,14 @@ struct HomeView: View {
     /// a divider and only appear once the user is signed in.
     private var overflowMenu: some View {
         Menu {
+            Button {
+                showNewStreakList = true
+            } label: {
+                Label("New Streak List", systemImage: "flame")
+            }
+
+            Divider()
+
             Picker("Sort by", selection: $sortOptionRaw) {
                 ForEach(HomeSortOption.allCases) { option in
                     Label(option.label, systemImage: option.icon)
@@ -382,26 +418,47 @@ struct ListRow: View {
         return list.items.filter { $0.text.lowercased().contains(query) }.count
     }
 
+    private var typeIcon: String {
+        switch list.type {
+        case .streak: return "flame"
+        case .checklist: return "checklist"
+        case .list: return "list.bullet"
+        }
+    }
+
+    private var badge: String? {
+        if !searchQuery.isEmpty && matchingItemCount > 0 {
+            return "\(matchingItemCount) match\(matchingItemCount == 1 ? "" : "es")"
+        }
+        switch list.type {
+        case .streak:
+            let count = list.streakSections.count
+            return count > 0 ? "\(count) streak\(count == 1 ? "" : "s")" : nil
+        case .checklist:
+            return list.itemCount > 0 ? "\(list.checkedCount)/\(list.itemCount)" : nil
+        case .list:
+            return list.itemCount > 0 ? "\(list.itemCount)" : nil
+        }
+    }
+
     var body: some View {
         HStack(spacing: Theme.spaceSM) {
             // Type icon
-            Image(systemName: list.type == .checklist ? "checklist" : "list.bullet")
+            Image(systemName: typeIcon)
                 .font(.system(size: 16, weight: .light))
-                .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
+                .foregroundStyle(
+                    list.type == .streak
+                        ? Theme.ndAccent
+                        : Theme.ndTextSecondary.resolve(for: colorScheme)
+                )
                 .frame(width: 24)
 
             Text(list.title)
                 .font(Theme.bodyFont())
                 .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
 
-            if !searchQuery.isEmpty && matchingItemCount > 0 {
-                Text("\(matchingItemCount) match\(matchingItemCount == 1 ? "" : "es")")
-                    .nothingLabel(color: Theme.ndTextSecondary.resolve(for: colorScheme))
-            } else if list.type == .checklist && list.itemCount > 0 {
-                Text("\(list.checkedCount)/\(list.itemCount)")
-                    .nothingLabel(color: Theme.ndTextSecondary.resolve(for: colorScheme))
-            } else if list.itemCount > 0 {
-                Text("\(list.itemCount)")
+            if let badge {
+                Text(badge)
                     .nothingLabel(color: Theme.ndTextSecondary.resolve(for: colorScheme))
             }
 
@@ -547,5 +604,107 @@ struct NewListSheet: View {
             )
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - New Streak List Sheet
+
+struct NewStreakListSheet: View {
+    @Binding var title: String
+    var onCreate: () -> Void
+    var onCancel: () -> Void
+    @Environment(\.colorScheme) private var colorScheme
+    @FocusState private var isFocused: Bool
+
+    private var isValid: Bool {
+        !title.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Header bar
+            HStack {
+                Button {
+                    title = ""
+                    onCancel()
+                } label: {
+                    Text("CANCEL")
+                        .font(Theme.labelFont(size: 13))
+                        .textCase(.uppercase)
+                        .tracking(13 * 0.06)
+                        .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
+                }
+                Spacer()
+                Button(action: onCreate) {
+                    Text("CREATE")
+                        .font(Theme.labelFont(size: 13))
+                        .textCase(.uppercase)
+                        .tracking(13 * 0.06)
+                        .foregroundStyle(
+                            isValid
+                                ? Theme.ndBlack.resolve(for: colorScheme)
+                                : Theme.ndTextDisabled.resolve(for: colorScheme)
+                        )
+                        .padding(.horizontal, Theme.spaceLG)
+                        .padding(.vertical, Theme.spaceSM)
+                        .background(
+                            isValid
+                                ? Theme.ndTextPrimary.resolve(for: colorScheme)
+                                : Theme.ndSurfaceRaised.resolve(for: colorScheme)
+                        )
+                        .clipShape(Capsule())
+                }
+                .disabled(!isValid)
+            }
+            .padding(.horizontal, Theme.spaceMD)
+            .padding(.top, Theme.spaceLG)
+
+            Spacer().frame(height: Theme.space2XL)
+
+            // Icon + label
+            HStack(spacing: Theme.spaceSM) {
+                Image(systemName: "flame")
+                    .font(.system(size: 16, weight: .light))
+                    .foregroundStyle(Theme.ndAccent)
+                Text("STREAK LIST")
+                    .nothingLabel(color: Theme.ndTextSecondary.resolve(for: colorScheme))
+            }
+            .padding(.horizontal, Theme.spaceMD)
+            .padding(.bottom, Theme.spaceMD)
+
+            // Title input
+            VStack(alignment: .leading, spacing: Theme.spaceSM) {
+                Text("LIST NAME")
+                    .nothingLabel(color: Theme.ndTextSecondary.resolve(for: colorScheme))
+                TextField("e.g. Daily Habits", text: $title)
+                    .font(Theme.headingFont(size: Theme.headingSize))
+                    .foregroundStyle(Theme.ndTextDisplay.resolve(for: colorScheme))
+                    .focused($isFocused)
+                    .submitLabel(.done)
+                    .onSubmit(onCreate)
+                    .padding(.bottom, Theme.spaceSM)
+                    .overlay(alignment: .bottom) {
+                        Rectangle()
+                            .frame(height: 1)
+                            .foregroundStyle(
+                                isFocused
+                                    ? Theme.ndTextPrimary.resolve(for: colorScheme)
+                                    : Theme.ndBorderVisible.resolve(for: colorScheme)
+                            )
+                    }
+            }
+            .padding(.horizontal, Theme.spaceMD)
+
+            Spacer().frame(height: Theme.spaceLG)
+
+            Text("You'll add streaks after creating the list.")
+                .font(Theme.bodyFont(size: Theme.bodySM))
+                .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
+                .padding(.horizontal, Theme.spaceMD)
+
+            Spacer()
+        }
+        .background(Theme.ndSurface.resolve(for: colorScheme))
+        .onAppear { isFocused = true }
     }
 }
