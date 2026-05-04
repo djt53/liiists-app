@@ -67,14 +67,19 @@ final class ListStore: ObservableObject {
         isLoaded = true
     }
 
-    func create(title: String, type: ItemList.ListType = .list) -> ItemList {
+    func create(
+        title: String,
+        type: ItemList.ListType = .list,
+        cadence: StreakCadence? = nil
+    ) -> ItemList {
         let filename = ItemList.filenameFromTitle(title)
         let list = ItemList(
             filename: filename,
             title: title,
             type: type,
             createdDate: Date(),
-            items: []
+            items: [],
+            streakCadence: type == .streak ? (cadence ?? .daily) : nil
         )
         save(list)
         lists.append(list)

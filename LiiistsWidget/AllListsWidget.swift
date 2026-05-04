@@ -6,7 +6,7 @@ import AppIntents
 
 struct AllListsEntry: TimelineEntry {
     let date: Date
-    let lists: [(title: String, itemCount: Int, checkedCount: Int, isChecklist: Bool, isStreak: Bool, streakCount: Int, filename: String)]
+    let lists: [(title: String, itemCount: Int, checkedCount: Int, isChecklist: Bool, isStreak: Bool, cadenceLabel: String, filename: String)]
 }
 
 // MARK: - Provider
@@ -14,9 +14,9 @@ struct AllListsEntry: TimelineEntry {
 struct AllListsProvider: TimelineProvider {
     func placeholder(in context: Context) -> AllListsEntry {
         AllListsEntry(date: .now, lists: [
-            ("Books", 5, 2, true, false, 0, "books.md"),
-            ("Groceries", 8, 0, false, false, 0, "groceries.md"),
-            ("Habits", 0, 0, false, true, 3, "habits.md"),
+            ("Books", 5, 2, true, false, "", "books.md"),
+            ("Groceries", 8, 0, false, false, "", "groceries.md"),
+            ("Workouts", 0, 0, false, true, "Daily", "workouts.md"),
         ])
     }
 
@@ -37,7 +37,7 @@ struct AllListsProvider: TimelineProvider {
              checkedCount: list.checkedCount,
              isChecklist: list.type == .checklist,
              isStreak: list.type == .streak,
-             streakCount: list.streakSections.count,
+             cadenceLabel: list.streakCadence?.displayLabel ?? "",
              filename: list.filename)
         }
         return AllListsEntry(date: .now, lists: lists)
@@ -81,8 +81,8 @@ struct AllListsWidgetView: View {
                             .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
                             .lineLimit(1)
                         Spacer()
-                        if list.isStreak && list.streakCount > 0 {
-                            Text("\(list.streakCount) streak\(list.streakCount == 1 ? "" : "s")")
+                        if list.isStreak && !list.cadenceLabel.isEmpty {
+                            Text(list.cadenceLabel.lowercased())
                                 .font(Theme.labelFont(size: 10))
                                 .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
                         } else if list.isChecklist && list.itemCount > 0 {

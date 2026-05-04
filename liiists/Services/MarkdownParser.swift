@@ -6,13 +6,15 @@ import Foundation
 /// ```
 /// ---                          (optional frontmatter)
 /// title: My List
-/// type: checklist
+/// type: checklist              (or list, or streak)
 /// created: 2026-03-26
+/// cadence: daily               (only for streak)
 /// ---
 /// # Optional H1 Title
 ///
 /// - [ ] Item one              (checklist)
 /// - Item two                  (plain list)
+/// - 2026-05-03                (streak — one ISO date per entry)
 /// ```
 enum MarkdownParser {
 
@@ -58,57 +60,38 @@ enum MarkdownParser {
         let titleFromFM = frontmatter.removeValue(forKey: "title")
         let createdStr = frontmatter.removeValue(forKey: "created")
         let createdDate = createdStr.flatMap { iso8601Formatter.date(from: $0) }
+        let cadenceStr = frontmatter.removeValue(forKey: "cadence")
+        let streakCadence: StreakCadence? = listType == .streak
+            ? StreakCadence.from(cadenceStr ?? "daily")
+            : nil
 
-        // Scan for H1 title and items (or streak sections)
+        // Scan for H1 title and items
         var h1Title: String?
         var items: [ListItem] = []
-        var streakSections: [StreakSection] = []
+        var streakEntries: [Date] = []
 
         if listType == .streak {
-            // Streak parsing: H2 headings as sections, cadence lines, date entries
-            var currentSection: StreakSection?
-
+            // Streak parsing: any `- YYYY-MM-DD` bullet is an entry.
+            // H2 headings and `cadence:` body lines from the legacy
+            // multi-section format are ignored.
             while index < lines.count {
                 let line = lines[index]
                 let trimmed = line.trimmingCharacters(in: .whitespaces)
                 index += 1
 
-                // H1 heading (title)
                 if trimmed.hasPrefix("# ") && !trimmed.hasPrefix("## ") && h1Title == nil {
                     h1Title = String(trimmed.dropFirst(2))
                     continue
                 }
 
-                // H2 heading → new streak section
-                if trimmed.hasPrefix("## ") {
-                    if let section = currentSection {
-                        streakSections.append(section)
-                    }
-                    currentSection = StreakSection(name: String(trimmed.dropFirst(3)))
-                    continue
-                }
-
-                // Cadence line (immediately after H2)
-                if trimmed.hasPrefix("cadence:"), currentSection != nil {
-                    let value = String(trimmed.dropFirst(8)).trimmingCharacters(in: .whitespaces)
-                    currentSection?.cadence = StreakCadence.from(value)
-                    continue
-                }
-
-                // Date entry: - YYYY-MM-DD
-                if trimmed.hasPrefix("- "), currentSection != nil {
+                if trimmed.hasPrefix("- ") {
                     let dateStr = String(trimmed.dropFirst(2)).trimmingCharacters(in: .whitespaces)
                     if let date = iso8601Formatter.date(from: dateStr) {
-                        currentSection?.entries.append(date)
+                        streakEntries.append(date)
                     }
-                    continue
                 }
             }
-
-            // Don't forget the last section
-            if let section = currentSection {
-                streakSections.append(section)
-            }
+            streakEntries.sort(by: >)
         } else {
             // Standard list/checklist parsing
             while index < lines.count {
@@ -116,19 +99,16 @@ enum MarkdownParser {
                 let trimmed = line.trimmingCharacters(in: .whitespaces)
                 index += 1
 
-                // H1 heading
                 if trimmed.hasPrefix("# ") && h1Title == nil {
                     h1Title = String(trimmed.dropFirst(2))
                     continue
                 }
 
-                // Checklist item: - [ ] or - [x]
                 if let item = parseChecklistItem(trimmed) {
                     items.append(item)
                     continue
                 }
 
-                // Plain bullet item: - text
                 if let item = parseBulletItem(trimmed) {
                     items.append(item)
                     continue
@@ -145,7 +125,8 @@ enum MarkdownParser {
             type: listType,
             createdDate: createdDate,
             items: items,
-            streakSections: streakSections,
+            streakCadence: streakCadence,
+            streakEntries: streakEntries,
             extraFrontmatter: frontmatter
         )
     }
@@ -172,18 +153,20 @@ enum MarkdownParser {
     static func write(_ list: ItemList) -> String {
         var lines: [String] = []
 
-        // Frontmatter (only if there's something to write)
+        // Frontmatter
         var fm: [String: String] = list.extraFrontmatter
         fm["title"] = list.title
         fm["type"] = list.type.rawValue
         if let date = list.createdDate {
             fm["created"] = iso8601Formatter.string(from: date)
         }
+        if list.type == .streak, let cadence = list.streakCadence {
+            fm["cadence"] = cadence.markdownString
+        }
 
         if !fm.isEmpty {
             lines.append("---")
-            // Write known keys in a consistent order, then extras
-            let orderedKeys = ["title", "type", "created"]
+            let orderedKeys = ["title", "type", "created", "cadence"]
             for key in orderedKeys {
                 if let value = fm.removeValue(forKey: key) {
                     lines.append("\(key): \(value)")
@@ -196,17 +179,11 @@ enum MarkdownParser {
             lines.append("")
         }
 
-        // Items / sections
+        // Body
         switch list.type {
         case .streak:
-            for (i, section) in list.streakSections.enumerated() {
-                if i > 0 { lines.append("") }
-                lines.append("## \(section.name)")
-                lines.append("cadence: \(section.cadence.markdownString)")
-                lines.append("")
-                for date in section.entries {
-                    lines.append("- \(iso8601Formatter.string(from: date))")
-                }
+            for date in list.streakEntries.sorted(by: >) {
+                lines.append("- \(iso8601Formatter.string(from: date))")
             }
         case .checklist:
             for item in list.items {

@@ -128,14 +128,11 @@ struct LiiistsShortcuts: AppShortcutsProvider {
 
 struct LogStreakIntent: AppIntent {
     static var title: LocalizedStringResource = "Log Streak"
-    static var description: IntentDescription = "Log today's entry for a streak"
+    static var description: IntentDescription = "Log today's entry for a streak list"
     static var openAppWhenRun: Bool = false
 
     @Parameter(title: "List Name")
     var listName: String
-
-    @Parameter(title: "Streak Name")
-    var streakName: String
 
     func perform() async throws -> some IntentResult & ReturnsValue<String> {
         let store = IntentListStore()
@@ -143,28 +140,19 @@ struct LogStreakIntent: AppIntent {
             throw IntentError.listNotFound(listName)
         }
 
-        guard let idx = list.streakSections.firstIndex(where: {
-            $0.name.lowercased() == streakName.lowercased()
-        }) else {
-            throw IntentError.listNotFound("\(listName)/\(streakName)")
-        }
-
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
-        let alreadyLogged = list.streakSections[idx].entries.contains {
-            calendar.startOfDay(for: $0) == today
-        }
-
+        let alreadyLogged = list.isStreakDayLogged(Date())
         if !alreadyLogged {
-            list.streakSections[idx].entries.insert(today, at: 0)
+            list.toggleStreakDay(Date())
             store.save(list)
         }
 
-        return .result(value: "Logged \(streakName) in \(list.title)")
+        return .result(value: alreadyLogged
+            ? "Already logged \(list.title) today"
+            : "Logged \(list.title)")
     }
 
     static var parameterSummary: some ParameterSummary {
-        Summary("Log \(\.$streakName) in \(\.$listName)")
+        Summary("Log \(\.$listName)")
     }
 }
 

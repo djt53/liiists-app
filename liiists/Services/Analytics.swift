@@ -139,17 +139,16 @@ enum Analytics {
 
     // MARK: - Streaks
 
-    static func streakLogged(listTitle: String, habit: String) {
+    static func streakLogged(listTitle: String) {
         PostHogSDK.shared.capture("streak_logged", properties: [
             "list_title": listTitle,
-            "habit": habit,
         ])
     }
 
-    static func streakListCreated(title: String, habitCount: Int) {
+    static func streakListCreated(title: String, cadence: String) {
         PostHogSDK.shared.capture("streak_list_created", properties: [
             "list_title": title,
-            "habit_count": habitCount,
+            "cadence": cadence,
         ])
     }
 

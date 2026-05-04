@@ -44,8 +44,7 @@ struct HomeView: View {
     @State private var showNewList = false
     @State private var newListTitle = ""
     @State private var newListType: ItemList.ListType = .list
-    @State private var showNewStreakList = false
-    @State private var newStreakTitle = ""
+    @State private var newListCadence: StreakCadence = .daily
     @State private var searchText = ""
     @State private var showSearch = false
     @State private var animatingCharIndex: Int? = nil
@@ -135,43 +134,29 @@ struct HomeView: View {
                 NewListSheet(
                     title: $newListTitle,
                     listType: $newListType,
+                    cadence: $newListCadence,
                     onCreate: {
                         let trimmed = newListTitle.trimmingCharacters(in: .whitespaces)
                         guard !trimmed.isEmpty else { return }
-                        let newList = store.create(title: trimmed, type: newListType)
+                        let newList = store.create(
+                            title: trimmed,
+                            type: newListType,
+                            cadence: newListType == .streak ? newListCadence : nil
+                        )
                         Theme.mediumHaptic()
                         newListTitle = ""
                         newListType = .list
+                        newListCadence = .daily
                         showNewList = false
-                        // Navigate to the new list
+                        // Navigate to the new list. Streak lists don't need
+                        // the add field — they show the first circle ready to tap.
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                            deepLinkFocusAdd = true
+                            deepLinkFocusAdd = newList.type != .streak
                             path.append(newList.filename)
                         }
                     },
                     onCancel: {
                         showNewList = false
-                    }
-                )
-                .presentationDetents([.medium])
-                .presentationDragIndicator(.visible)
-            }
-            .sheet(isPresented: $showNewStreakList) {
-                NewStreakListSheet(
-                    title: $newStreakTitle,
-                    onCreate: {
-                        let trimmed = newStreakTitle.trimmingCharacters(in: .whitespaces)
-                        guard !trimmed.isEmpty else { return }
-                        let newList = store.create(title: trimmed, type: .streak)
-                        Theme.mediumHaptic()
-                        newStreakTitle = ""
-                        showNewStreakList = false
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                            path.append(newList.filename)
-                        }
-                    },
-                    onCancel: {
-                        showNewStreakList = false
                     }
                 )
                 .presentationDetents([.medium])
@@ -327,14 +312,6 @@ struct HomeView: View {
     /// a divider and only appear once the user is signed in.
     private var overflowMenu: some View {
         Menu {
-            Button {
-                showNewStreakList = true
-            } label: {
-                Label("New Streak List", systemImage: "flame")
-            }
-
-            Divider()
-
             Picker("Sort by", selection: $sortOptionRaw) {
                 ForEach(HomeSortOption.allCases) { option in
                     Label(option.label, systemImage: option.icon)
@@ -432,8 +409,7 @@ struct ListRow: View {
         }
         switch list.type {
         case .streak:
-            let count = list.streakSections.count
-            return count > 0 ? "\(count) streak\(count == 1 ? "" : "s")" : nil
+            return list.streakCadence?.displayLabel.lowercased()
         case .checklist:
             return list.itemCount > 0 ? "\(list.checkedCount)/\(list.itemCount)" : nil
         case .list:
@@ -474,6 +450,7 @@ struct ListRow: View {
 struct NewListSheet: View {
     @Binding var title: String
     @Binding var listType: ItemList.ListType
+    @Binding var cadence: StreakCadence
     var onCreate: () -> Void
     var onCancel: () -> Void
     @Environment(\.colorScheme) private var colorScheme
@@ -561,6 +538,7 @@ struct NewListSheet: View {
                 HStack(spacing: 0) {
                     segmentButton(label: "LIST", icon: "list.bullet", type: .list)
                     segmentButton(label: "CHECKLIST", icon: "checklist", type: .checklist)
+                    segmentButton(label: "STREAK", icon: "flame", type: .streak)
                 }
                 .background(
                     RoundedRectangle(cornerRadius: Theme.cornerRadius)
@@ -570,10 +548,59 @@ struct NewListSheet: View {
             }
             .padding(.horizontal, Theme.spaceMD)
 
+            // Cadence picker — only when STREAK is selected
+            if listType == .streak {
+                Spacer().frame(height: Theme.spaceLG)
+
+                VStack(alignment: .leading, spacing: Theme.spaceSM) {
+                    Text("CADENCE")
+                        .nothingLabel(color: Theme.ndTextSecondary.resolve(for: colorScheme))
+
+                    HStack(spacing: 0) {
+                        cadenceButton(label: "DAILY", value: .daily)
+                        cadenceButton(label: "WEEKDAYS", value: .weekdays)
+                        cadenceButton(label: "3/WEEK", value: .threePerWeek)
+                    }
+                    .background(
+                        RoundedRectangle(cornerRadius: Theme.cornerRadius)
+                            .strokeBorder(Theme.ndBorderVisible.resolve(for: colorScheme), lineWidth: 1)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.cornerRadius))
+                }
+                .padding(.horizontal, Theme.spaceMD)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+
             Spacer()
         }
         .background(Theme.ndSurface.resolve(for: colorScheme))
         .onAppear { isFocused = true }
+    }
+
+    private func cadenceButton(label: String, value: StreakCadence) -> some View {
+        let isActive = cadence == value
+        return Button {
+            withAnimation(.easeOut(duration: Theme.microDuration)) {
+                cadence = value
+            }
+        } label: {
+            Text(label)
+                .font(Theme.labelFont(size: Theme.labelSize))
+                .tracking(Theme.labelSize * 0.06)
+                .frame(maxWidth: .infinity)
+                .frame(height: 40)
+                .foregroundStyle(
+                    isActive
+                        ? Theme.ndBlack.resolve(for: colorScheme)
+                        : Theme.ndTextSecondary.resolve(for: colorScheme)
+                )
+                .background(
+                    isActive
+                        ? Theme.ndTextDisplay.resolve(for: colorScheme)
+                        : .clear
+                )
+        }
+        .buttonStyle(.plain)
     }
 
     private func segmentButton(label: String, icon: String, type: ItemList.ListType) -> some View {
@@ -607,104 +634,3 @@ struct NewListSheet: View {
     }
 }
 
-// MARK: - New Streak List Sheet
-
-struct NewStreakListSheet: View {
-    @Binding var title: String
-    var onCreate: () -> Void
-    var onCancel: () -> Void
-    @Environment(\.colorScheme) private var colorScheme
-    @FocusState private var isFocused: Bool
-
-    private var isValid: Bool {
-        !title.trimmingCharacters(in: .whitespaces).isEmpty
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Header bar
-            HStack {
-                Button {
-                    title = ""
-                    onCancel()
-                } label: {
-                    Text("CANCEL")
-                        .font(Theme.labelFont(size: 13))
-                        .textCase(.uppercase)
-                        .tracking(13 * 0.06)
-                        .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
-                }
-                Spacer()
-                Button(action: onCreate) {
-                    Text("CREATE")
-                        .font(Theme.labelFont(size: 13))
-                        .textCase(.uppercase)
-                        .tracking(13 * 0.06)
-                        .foregroundStyle(
-                            isValid
-                                ? Theme.ndBlack.resolve(for: colorScheme)
-                                : Theme.ndTextDisabled.resolve(for: colorScheme)
-                        )
-                        .padding(.horizontal, Theme.spaceLG)
-                        .padding(.vertical, Theme.spaceSM)
-                        .background(
-                            isValid
-                                ? Theme.ndTextPrimary.resolve(for: colorScheme)
-                                : Theme.ndSurfaceRaised.resolve(for: colorScheme)
-                        )
-                        .clipShape(Capsule())
-                }
-                .disabled(!isValid)
-            }
-            .padding(.horizontal, Theme.spaceMD)
-            .padding(.top, Theme.spaceLG)
-
-            Spacer().frame(height: Theme.space2XL)
-
-            // Icon + label
-            HStack(spacing: Theme.spaceSM) {
-                Image(systemName: "flame")
-                    .font(.system(size: 16, weight: .light))
-                    .foregroundStyle(Theme.ndAccent)
-                Text("STREAK LIST")
-                    .nothingLabel(color: Theme.ndTextSecondary.resolve(for: colorScheme))
-            }
-            .padding(.horizontal, Theme.spaceMD)
-            .padding(.bottom, Theme.spaceMD)
-
-            // Title input
-            VStack(alignment: .leading, spacing: Theme.spaceSM) {
-                Text("LIST NAME")
-                    .nothingLabel(color: Theme.ndTextSecondary.resolve(for: colorScheme))
-                TextField("e.g. Daily Habits", text: $title)
-                    .font(Theme.headingFont(size: Theme.headingSize))
-                    .foregroundStyle(Theme.ndTextDisplay.resolve(for: colorScheme))
-                    .focused($isFocused)
-                    .submitLabel(.done)
-                    .onSubmit(onCreate)
-                    .padding(.bottom, Theme.spaceSM)
-                    .overlay(alignment: .bottom) {
-                        Rectangle()
-                            .frame(height: 1)
-                            .foregroundStyle(
-                                isFocused
-                                    ? Theme.ndTextPrimary.resolve(for: colorScheme)
-                                    : Theme.ndBorderVisible.resolve(for: colorScheme)
-                            )
-                    }
-            }
-            .padding(.horizontal, Theme.spaceMD)
-
-            Spacer().frame(height: Theme.spaceLG)
-
-            Text("You'll add streaks after creating the list.")
-                .font(Theme.bodyFont(size: Theme.bodySM))
-                .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
-                .padding(.horizontal, Theme.spaceMD)
-
-            Spacer()
-        }
-        .background(Theme.ndSurface.resolve(for: colorScheme))
-        .onAppear { isFocused = true }
-    }
-}
