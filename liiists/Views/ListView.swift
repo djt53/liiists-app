@@ -17,6 +17,7 @@ struct ListView: View {
     @State private var isAdding = false
     @State private var showPublishOnboarding = false
     @State private var publishAfterOnboarding = false
+    @State private var showEULA = false
     @FocusState private var isAddFieldFocused: Bool
     @FocusState private var isSearchFocused: Bool
     @AppStorage("social_engaged") private var socialEngaged: Bool = false
@@ -262,11 +263,33 @@ struct ListView: View {
             PublishOnboardingSheet(onFinish: {
                 socialEngaged = true
                 if publishAfterOnboarding && account.isSignedIn {
-                    Task { await publish.publish(list) }
+                    if EULA.isAccepted {
+                        Task { await publish.publish(list) }
+                        Analytics.listPublished(title: list.title)
+                        publishAfterOnboarding = false
+                    } else {
+                        // Defer publish until after EULA accepted
+                        showEULA = true
+                    }
+                } else {
+                    publishAfterOnboarding = false
                 }
-                publishAfterOnboarding = false
             })
             .environmentObject(account)
+        }
+        .sheet(isPresented: $showEULA) {
+            EULASheet(
+                onAccept: {
+                    if publishAfterOnboarding {
+                        Task { await publish.publish(list) }
+                        Analytics.listPublished(title: list.title)
+                        publishAfterOnboarding = false
+                    }
+                },
+                onDecline: {
+                    publishAfterOnboarding = false
+                }
+            )
         }
         .onChange(of: list) { _, newValue in
             store.update(newValue)
@@ -364,13 +387,18 @@ struct ListView: View {
     }
 
     private func handlePublishTapped() {
-        if account.isSignedIn {
-            Task { await publish.publish(list) }
-            Analytics.listPublished(title: list.title)
-        } else {
+        guard account.isSignedIn else {
             publishAfterOnboarding = true
             showPublishOnboarding = true
+            return
         }
+        guard EULA.isAccepted else {
+            publishAfterOnboarding = true
+            showEULA = true
+            return
+        }
+        Task { await publish.publish(list) }
+        Analytics.listPublished(title: list.title)
     }
 
     // MARK: - Add Item Logic
