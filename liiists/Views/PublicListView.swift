@@ -13,6 +13,8 @@ struct PublicListView: View {
     @State private var newListPromptItem: String?
     @State private var newListTitle: String = ""
     @State private var copyConfirm = false
+    @State private var showReportDialog = false
+    @State private var reportConfirm = false
 
     private var isUpvoted: Bool {
         publish.upvotedRecordNames.contains(summary.recordName)
@@ -53,6 +55,32 @@ struct PublicListView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text("\"\(liveSummary.title)\" is now in your library. It won't update if the author changes the original.")
+        }
+        .confirmationDialog(
+            "Report this list?",
+            isPresented: $showReportDialog,
+            titleVisibility: .visible
+        ) {
+            ForEach(ReportReason.allCases) { reason in
+                Button(reason.label) {
+                    Task {
+                        await publish.report(liveSummary, reason: reason)
+                        reportConfirm = true
+                        // Dismiss back to Discover after a beat — the list
+                        // is now hidden from the feed.
+                        try? await Task.sleep(nanoseconds: 1_200_000_000)
+                        dismiss()
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("It will be hidden from your feed. Lists reported by enough people are removed for everyone.")
+        }
+        .alert("Reported", isPresented: $reportConfirm) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Thanks. We review reports within 24 hours.")
         }
         .alert("New list", isPresented: Binding(
             get: { newListPromptItem != nil },
@@ -162,11 +190,12 @@ struct PublicListView: View {
 
             Divider()
 
-            Button {
-                // T-51i — Report flow
+            Button(role: .destructive) {
+                showReportDialog = true
             } label: {
                 Label("Report", systemImage: "flag")
             }
+            .disabled(publish.hasReported(summary.recordName))
             Button {
                 // T-51j — Block user
             } label: {

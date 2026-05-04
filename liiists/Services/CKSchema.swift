@@ -60,16 +60,27 @@ enum CKSchema {
         }
     }
 
-    // MARK: - Report (deferred to T-51i)
+    // MARK: - Report
 
+    /// Apple guideline 1.2 — UGC apps need a flag mechanism. Reports go to a
+    /// public-DB record type; we count distinct reporters per list and hide
+    /// any list with ≥ `Report.hideThreshold` reports. Reporter identity is
+    /// the CK system field `creatorUserRecordID` (decision 010 hardening).
     enum Report {
         static let recordType = "Report"
 
+        /// Distinct-reporter threshold above which a list is hidden from
+        /// every feed (not just the reporter's). Tunable.
+        static let hideThreshold: Int = 3
+
         enum Field {
+            /// CKReference to PublishedList. Delete action: deleteSelf — when
+            /// a list is unpublished or removed, its reports go too.
             static let listRef = "listRef"
-            static let reporterRef = "reporterRef"
+            /// Optional reason category — "hate", "sexual", "illegal",
+            /// "spam", "other". Free-form on the wire so we can add reasons
+            /// without a schema change. Empty string means unspecified.
             static let reason = "reason"
-            static let createdAt = "createdAt"
         }
     }
 }

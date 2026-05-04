@@ -29,6 +29,11 @@ final class PublishStore: ObservableObject {
     /// they fall out of the trending 7-day window.
     @Published private(set) var savedSummaries: [PublishedListSummary] = []
 
+    /// Set of PublishedList record names the current user has reported.
+    /// Filters them out of the user's own Discover feed regardless of how
+    /// many other users have reported. Persisted in UserDefaults.
+    @Published private(set) var reportedRecordNames: Set<String> = []
+
     @Published private(set) var isLoadingFeed = false
     @Published private(set) var lastError: String?
 
@@ -52,6 +57,7 @@ final class PublishStore: ObservableObject {
     private let publishedIndexKey = "liiists.publishedIndex"
     private let upvotedKey = "liiists.upvotedRecordNames"
     private let savedKey = "liiists.savedSummaries"
+    private let reportedKey = "liiists.reportedRecordNames"
 
     private var feedCursor: CKQueryOperation.Cursor?
 
@@ -75,6 +81,9 @@ final class PublishStore: ObservableObject {
            let decoded = try? JSONDecoder().decode([PublishedListSummary].self, from: data) {
             savedSummaries = decoded
         }
+        if let arr = defaults.stringArray(forKey: reportedKey) {
+            reportedRecordNames = Set(arr)
+        }
     }
 
     private func persistPublishedIndex() {
@@ -89,6 +98,14 @@ final class PublishStore: ObservableObject {
         if let data = try? JSONEncoder().encode(savedSummaries) {
             defaults.set(data, forKey: savedKey)
         }
+    }
+
+    private func persistReported() {
+        defaults.set(Array(reportedRecordNames), forKey: reportedKey)
+    }
+
+    func hasReported(_ recordName: String) -> Bool {
+        reportedRecordNames.contains(recordName)
     }
 
     func isPublished(filename: String) -> Bool {
@@ -289,6 +306,16 @@ final class PublishStore: ObservableObject {
                 newSummaries[i].upvoteCount = counts[newSummaries[i].recordName] ?? 0
             }
 
+            // Filter: hide lists this user has personally reported, and any
+            // list with ≥ Report.hideThreshold distinct reporters globally.
+            // Apple guideline 1.2 — reactive moderation. Decision 007.
+            let reportCounts = await fetchReportCounts(for: newSummaries.map { $0.recordName })
+            newSummaries = newSummaries.filter { summary in
+                if reportedRecordNames.contains(summary.recordName) { return false }
+                let count = reportCounts[summary.recordName] ?? 0
+                return count < CKSchema.Report.hideThreshold
+            }
+
             // Defense-in-depth dedupe: never let the same recordName appear
             // twice in the in-memory feed.
             let existingNames = Set(feed.map { $0.recordName })
@@ -300,6 +327,37 @@ final class PublishStore: ObservableObject {
             lastError = nil
         } catch {
             lastError = (error as NSError).localizedDescription
+        }
+    }
+
+    /// Returns a map from PublishedList recordName → distinct-reporter count,
+    /// computed by counting Report records (deduped by reporter user ID).
+    /// Mirrors the upvote-count pattern: single CK query per page using an
+    /// IN predicate, then bucket client-side. Reporter identity is the CK
+    /// system field `creatorUserRecordID` (decision 010 hardening).
+    private func fetchReportCounts(for recordNames: [String]) async -> [String: Int] {
+        guard !recordNames.isEmpty else { return [:] }
+        let refs = recordNames.map { CKRecord.Reference(recordID: CKRecord.ID(recordName: $0), action: .deleteSelf) }
+        let predicate = NSPredicate(format: "%K IN %@", CKSchema.Report.Field.listRef, refs)
+        let query = CKQuery(recordType: CKSchema.Report.recordType, predicate: predicate)
+
+        do {
+            let result = try await publicDB.records(matching: query, resultsLimit: 200)
+            var distinctReportersByList: [String: Set<String>] = [:]
+            for (_, recordResult) in result.matchResults {
+                guard case .success(let record) = recordResult,
+                      let listRef = record[CKSchema.Report.Field.listRef] as? CKRecord.Reference,
+                      let reporter = record.creatorUserRecordID?.recordName else { continue }
+                distinctReportersByList[listRef.recordID.recordName, default: []].insert(reporter)
+            }
+            return distinctReportersByList.mapValues(\.count)
+        } catch {
+            // Don't fail the whole feed on a counting error — just default
+            // to "not over threshold" (i.e. show the list) and surface the
+            // error. This errs on the side of showing content rather than
+            // silently hiding it on a transient CK failure.
+            print("[PublishStore] fetchReportCounts failed: \(error.localizedDescription)")
+            return [:]
         }
     }
 
@@ -405,6 +463,75 @@ final class PublishStore: ObservableObject {
             lastError = nil
         } catch {
             lastError = (error as NSError).localizedDescription
+        }
+    }
+
+    // MARK: - Report
+
+    /// Submit a report for the given published list. Writes a CK Report
+    /// record (reporter identity from system field `creatorUserRecordID`)
+    /// and adds the list to the local hidden set so it disappears from the
+    /// reporter's feed immediately. Apple guideline 1.2. Decision 007.
+    ///
+    /// Idempotent for the local set; CK side may end up with duplicates if
+    /// the user reports twice across reinstalls. Cheap, acceptable at v1
+    /// scale, and the threshold-based hide doesn't care.
+    func report(_ summary: PublishedListSummary, reason: ReportReason) async {
+        // Local hide first so the UI updates immediately even if the user
+        // is offline. The CK write follows.
+        reportedRecordNames.insert(summary.recordName)
+        persistReported()
+        feed.removeAll { $0.recordName == summary.recordName }
+
+        // Seeds are local fixtures — local-only report is enough.
+        if summary.isSeed { return }
+        guard account.isSignedIn else {
+            // Local-only is still useful (hides the list for this user).
+            // Don't surface an error; signed-out reporting just doesn't
+            // contribute to the global threshold.
+            return
+        }
+
+        let listRef = CKRecord.Reference(
+            recordID: CKRecord.ID(recordName: summary.recordName),
+            action: .deleteSelf
+        )
+        let record = CKRecord(recordType: CKSchema.Report.recordType)
+        record[CKSchema.Report.Field.listRef] = listRef
+        record[CKSchema.Report.Field.reason] = reason.rawValue as CKRecordValue
+
+        do {
+            _ = try await publicDB.save(record)
+            lastError = nil
+        } catch {
+            // The local hide already happened — surface the network error
+            // but don't try to undo. Worst case we miss a global threshold
+            // contribution; the user's own feed is still cleaned up.
+            print("[PublishStore] report failed: \((error as NSError).localizedDescription)")
+        }
+    }
+}
+
+// MARK: - Report reason
+
+/// Categories the reporter selects from. Stored as a free-form string in CK
+/// so we can add new reasons without a schema migration.
+enum ReportReason: String, CaseIterable, Identifiable {
+    case hate
+    case sexual
+    case illegal
+    case spam
+    case other
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .hate: return "Hate or harassment"
+        case .sexual: return "Sexual content"
+        case .illegal: return "Illegal activity"
+        case .spam: return "Spam or scam"
+        case .other: return "Other"
         }
     }
 }
