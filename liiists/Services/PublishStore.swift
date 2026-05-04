@@ -34,6 +34,12 @@ final class PublishStore: ObservableObject {
     /// many other users have reported. Persisted in UserDefaults.
     @Published private(set) var reportedRecordNames: Set<String> = []
 
+    /// Authors the user has blocked. Local-only per decision 007 — filters
+    /// Discover client-side. Stored as full BlockedAuthor records (with
+    /// snapshot display name) so the AccountSheet unblock UI has something
+    /// human-readable to show.
+    @Published private(set) var blockedAuthors: [BlockedAuthor] = []
+
     @Published private(set) var isLoadingFeed = false
     @Published private(set) var lastError: String?
 
@@ -58,6 +64,7 @@ final class PublishStore: ObservableObject {
     private let upvotedKey = "liiists.upvotedRecordNames"
     private let savedKey = "liiists.savedSummaries"
     private let reportedKey = "liiists.reportedRecordNames"
+    private let blockedKey = "liiists.blockedAuthors"
 
     private var feedCursor: CKQueryOperation.Cursor?
 
@@ -84,6 +91,10 @@ final class PublishStore: ObservableObject {
         if let arr = defaults.stringArray(forKey: reportedKey) {
             reportedRecordNames = Set(arr)
         }
+        if let data = defaults.data(forKey: blockedKey),
+           let decoded = try? JSONDecoder().decode([BlockedAuthor].self, from: data) {
+            blockedAuthors = decoded
+        }
     }
 
     private func persistPublishedIndex() {
@@ -104,8 +115,18 @@ final class PublishStore: ObservableObject {
         defaults.set(Array(reportedRecordNames), forKey: reportedKey)
     }
 
+    private func persistBlocked() {
+        if let data = try? JSONEncoder().encode(blockedAuthors) {
+            defaults.set(data, forKey: blockedKey)
+        }
+    }
+
     func hasReported(_ recordName: String) -> Bool {
         reportedRecordNames.contains(recordName)
+    }
+
+    func isAuthorBlocked(userID: String) -> Bool {
+        blockedAuthors.contains(where: { $0.userID == userID })
     }
 
     func isPublished(filename: String) -> Bool {
@@ -306,12 +327,15 @@ final class PublishStore: ObservableObject {
                 newSummaries[i].upvoteCount = counts[newSummaries[i].recordName] ?? 0
             }
 
-            // Filter: hide lists this user has personally reported, and any
-            // list with ≥ Report.hideThreshold distinct reporters globally.
-            // Apple guideline 1.2 — reactive moderation. Decision 007.
+            // Filter: hide lists this user has personally reported, lists by
+            // blocked authors, and any list with ≥ Report.hideThreshold
+            // distinct reporters globally. Apple guideline 1.2 — reactive
+            // moderation. Decisions 007 (Block, Report).
             let reportCounts = await fetchReportCounts(for: newSummaries.map { $0.recordName })
+            let blockedIDs = Set(blockedAuthors.map { $0.userID })
             newSummaries = newSummaries.filter { summary in
                 if reportedRecordNames.contains(summary.recordName) { return false }
+                if let authorID = summary.authorUserID, blockedIDs.contains(authorID) { return false }
                 let count = reportCounts[summary.recordName] ?? 0
                 return count < CKSchema.Report.hideThreshold
             }
@@ -510,6 +534,48 @@ final class PublishStore: ObservableObject {
             print("[PublishStore] report failed: \((error as NSError).localizedDescription)")
         }
     }
+
+    // MARK: - Block
+
+    /// Block the author of `summary`. Local-only per decision 007 — filters
+    /// Discover client-side, no CK record. Reversible from AccountSheet.
+    /// Captures the author's display name at block time so the management
+    /// UI has something human-readable to show.
+    func blockAuthor(of summary: PublishedListSummary) {
+        guard let userID = summary.authorUserID else { return }
+        guard !isAuthorBlocked(userID: userID) else { return }
+        blockedAuthors.append(BlockedAuthor(
+            userID: userID,
+            displayName: summary.authorDisplayName
+        ))
+        persistBlocked()
+        // Drop any in-memory rows by this author so the UI updates immediately.
+        feed.removeAll { $0.authorUserID == userID }
+    }
+
+    /// Unblock by user ID. Lists by this author will reappear on the next
+    /// feed refresh.
+    func unblockAuthor(userID: String) {
+        blockedAuthors.removeAll { $0.userID == userID }
+        persistBlocked()
+    }
+}
+
+// MARK: - Blocked author
+
+/// Snapshot of a blocked author. The user ID is the CK record name of the
+/// author's CKUser record; the display name is captured at block time so
+/// the management UI doesn't have to re-fetch.
+struct BlockedAuthor: Identifiable, Equatable, Codable {
+    let userID: String
+    let displayName: String?
+
+    var id: String { userID }
+
+    var displayLabel: String {
+        if let name = displayName, !name.isEmpty { return "@\(name)" }
+        return "Anonymous user"
+    }
 }
 
 // MARK: - Report reason
@@ -546,6 +612,9 @@ struct PublishedListSummary: Identifiable, Equatable, Hashable, Codable {
     let items: [String]
     let itemCount: Int
     let authorDisplayName: String?
+    /// Author's CK user record name (system field `creatorUserRecordID`).
+    /// Used for the local block list (T-51j) — `nil` for seed fixtures.
+    let authorUserID: String?
     let publishedAt: Date
     var upvoteCount: Int
 
@@ -557,6 +626,7 @@ struct PublishedListSummary: Identifiable, Equatable, Hashable, Codable {
         title: String,
         items: [String],
         authorDisplayName: String?,
+        authorUserID: String? = nil,
         publishedAt: Date,
         upvoteCount: Int
     ) {
@@ -565,6 +635,7 @@ struct PublishedListSummary: Identifiable, Equatable, Hashable, Codable {
         self.items = items
         self.itemCount = items.count
         self.authorDisplayName = authorDisplayName
+        self.authorUserID = authorUserID
         self.publishedAt = publishedAt
         self.upvoteCount = upvoteCount
     }
@@ -584,6 +655,7 @@ struct PublishedListSummary: Identifiable, Equatable, Hashable, Codable {
         self.itemCount = (record[CKSchema.PublishedList.Field.itemCount] as? Int) ?? items.count
         let name = record[CKSchema.PublishedList.Field.authorDisplayName] as? String
         self.authorDisplayName = (name?.isEmpty == false) ? name : nil
+        self.authorUserID = record.creatorUserRecordID?.recordName
         self.publishedAt = publishedAt
         // upvoteCount is filled in by PublishStore.fetchUpvoteCounts after
         // the initial decode — start at zero so the client never trusts a

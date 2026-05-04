@@ -15,6 +15,7 @@ struct PublicListView: View {
     @State private var copyConfirm = false
     @State private var showReportDialog = false
     @State private var reportConfirm = false
+    @State private var showBlockConfirm = false
 
     private var isUpvoted: Bool {
         publish.upvotedRecordNames.contains(summary.recordName)
@@ -81,6 +82,15 @@ struct PublicListView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text("Thanks. We review reports within 24 hours.")
+        }
+        .alert("Block this author?", isPresented: $showBlockConfirm) {
+            Button("Block", role: .destructive) {
+                publish.blockAuthor(of: liveSummary)
+                dismiss()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("You won't see any lists from this author. You can unblock from Account.")
         }
         .alert("New list", isPresented: Binding(
             get: { newListPromptItem != nil },
@@ -196,11 +206,13 @@ struct PublicListView: View {
                 Label("Report", systemImage: "flag")
             }
             .disabled(publish.hasReported(summary.recordName))
-            Button {
-                // T-51j — Block user
+            Button(role: .destructive) {
+                showBlockConfirm = true
             } label: {
                 Label("Block author", systemImage: "hand.raised")
             }
+            .disabled(summary.authorUserID == nil
+                      || (summary.authorUserID.map(publish.isAuthorBlocked(userID:)) ?? false))
         } label: {
             Image(systemName: "ellipsis")
                 .font(.system(size: 16, weight: .light))

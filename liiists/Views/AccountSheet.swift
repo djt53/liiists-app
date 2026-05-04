@@ -4,6 +4,7 @@ import SwiftUI
 /// when the user is signed in. T-51d (decision 008's "reset path").
 struct AccountSheet: View {
     @EnvironmentObject private var account: AccountStore
+    @EnvironmentObject private var publish: PublishStore
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismiss
 
@@ -58,6 +59,29 @@ struct AccountSheet: View {
                 }
             }
             .tint(Theme.ndAccent)
+
+            if !publish.blockedAuthors.isEmpty {
+                Divider()
+                    .background(Theme.ndBorder.resolve(for: colorScheme))
+
+                VStack(alignment: .leading, spacing: Theme.spaceSM) {
+                    Text("BLOCKED")
+                        .nothingLabel()
+                    ForEach(publish.blockedAuthors) { blocked in
+                        HStack {
+                            Text(blocked.displayLabel)
+                                .font(Theme.bodyFont())
+                                .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
+                            Spacer()
+                            Button("Unblock") {
+                                publish.unblockAuthor(userID: blocked.userID)
+                            }
+                            .font(Theme.bodyFont(size: Theme.bodySM, weight: .medium))
+                            .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
+                        }
+                    }
+                }
+            }
 
             Spacer(minLength: 0)
 
