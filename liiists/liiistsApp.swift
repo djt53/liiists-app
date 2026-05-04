@@ -5,6 +5,7 @@ struct liiistsApp: App {
     @StateObject private var store = ListStore()
     @StateObject private var account: AccountStore
     @StateObject private var publish: PublishStore
+    @StateObject private var intelligence = IntelligenceStore()
     @State private var navigationTarget: String?
     @State private var focusAddField = false
     @State private var showNewListFromDeepLink = false
@@ -22,6 +23,7 @@ struct liiistsApp: App {
                 .environmentObject(store)
                 .environmentObject(account)
                 .environmentObject(publish)
+                .environmentObject(intelligence)
                 .preferredColorScheme(.dark)
                 .tint(Theme.ndAccent)
                 .task {

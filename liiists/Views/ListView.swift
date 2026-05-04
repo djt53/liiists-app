@@ -4,6 +4,7 @@ struct ListView: View {
     @EnvironmentObject private var store: ListStore
     @EnvironmentObject private var account: AccountStore
     @EnvironmentObject private var publish: PublishStore
+    @EnvironmentObject private var intelligence: IntelligenceStore
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismiss
     @State private var list: ItemList
@@ -18,12 +19,20 @@ struct ListView: View {
     @State private var showPublishOnboarding = false
     @State private var publishAfterOnboarding = false
     @State private var showEULA = false
+    @State private var showSuggestMore = false
     @FocusState private var isAddFieldFocused: Bool
     @FocusState private var isSearchFocused: Bool
     @AppStorage("social_engaged") private var socialEngaged: Bool = false
 
     private var isPublished: Bool {
         publish.isPublished(filename: list.filename)
+    }
+
+    /// Whether to render the "Suggest More" overflow entry. Hidden entirely
+    /// for streak lists (decision 011) and on devices without Apple
+    /// Intelligence. The disabled-when-N<2 case shows the entry but greys it.
+    private var showSuggestMoreEntry: Bool {
+        list.type != .streak && intelligence.aiAvailable
     }
 
     var isNewList: Bool = false
@@ -291,6 +300,12 @@ struct ListView: View {
                 }
             )
         }
+        .sheet(isPresented: $showSuggestMore) {
+            SuggestMoreSheet(list: list) { selected in
+                appendSuggestions(selected)
+            }
+            .environmentObject(intelligence)
+        }
         .onChange(of: list) { _, newValue in
             store.update(newValue)
         }
@@ -329,6 +344,17 @@ struct ListView: View {
                 shareListAsText()
             } label: {
                 Label("Copy as Text", systemImage: "doc.on.doc")
+            }
+
+            if showSuggestMoreEntry {
+                Divider()
+
+                Button {
+                    showSuggestMore = true
+                } label: {
+                    Label("Suggest More", systemImage: "wand.and.stars")
+                }
+                .disabled(list.items.count < 2)
             }
 
             Divider()
@@ -459,6 +485,19 @@ struct ListView: View {
             if !fallback.isEmpty { return [fallback] }
         }
         return results
+    }
+
+    /// Append suggestions to the top of the list, animated. Mirrors `addItem`'s
+    /// insertion-at-index-0 pattern so the new items show up where the user
+    /// expects them.
+    private func appendSuggestions(_ suggestions: [String]) {
+        guard !suggestions.isEmpty else { return }
+        withAnimation(Theme.nothingEasing) {
+            for text in suggestions.reversed() {
+                list.items.insert(ListItem(text: text), at: 0)
+            }
+        }
+        Theme.lightHaptic()
     }
 
     private func shareListAsText() {

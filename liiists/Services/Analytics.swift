@@ -160,4 +160,41 @@ enum Analytics {
             "content_type": contentType,
         ])
     }
+
+    // MARK: - Suggest More (decision 011)
+
+    static func suggestMoreInvoked(listTitle: String, itemCount: Int) {
+        PostHogSDK.shared.capture("suggest_more_invoked", properties: [
+            "list_title": listTitle,
+            "item_count": itemCount,
+        ])
+    }
+
+    static func suggestMoreSucceeded(listTitle: String, itemCount: Int) {
+        PostHogSDK.shared.capture("suggest_more_succeeded", properties: [
+            "list_title": listTitle,
+            "item_count": itemCount,
+        ])
+    }
+
+    static func suggestMoreFailed(listTitle: String, errorType: String) {
+        PostHogSDK.shared.capture("suggest_more_failed", properties: [
+            "list_title": listTitle,
+            "error_type": errorType,
+        ])
+    }
+
+    static func suggestMorePaywallHit(listTitle: String) {
+        PostHogSDK.shared.capture("suggest_more_paywall_hit", properties: [
+            "list_title": listTitle,
+        ])
+    }
+
+    static func suggestMoreAdded(listTitle: String, selectedCount: Int, totalCount: Int) {
+        PostHogSDK.shared.capture("suggest_more_added", properties: [
+            "list_title": listTitle,
+            "selected_count": selectedCount,
+            "total_count": totalCount,
+        ])
+    }
 }
