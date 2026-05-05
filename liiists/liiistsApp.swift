@@ -6,6 +6,7 @@ struct liiistsApp: App {
     @StateObject private var account: AccountStore
     @StateObject private var publish: PublishStore
     @StateObject private var intelligence = IntelligenceStore()
+    @StateObject private var paywall = Paywall.shared
     @State private var navigationTarget: String?
     @State private var focusAddField = false
     @State private var showNewListFromDeepLink = false
@@ -24,6 +25,7 @@ struct liiistsApp: App {
                 .environmentObject(account)
                 .environmentObject(publish)
                 .environmentObject(intelligence)
+                .environmentObject(paywall)
                 .preferredColorScheme(.dark)
                 .tint(Theme.ndAccent)
                 .task {

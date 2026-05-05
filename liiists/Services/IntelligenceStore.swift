@@ -50,6 +50,13 @@ final class IntelligenceStore: ObservableObject {
         }
     }
 
+    /// Whether the next `requestSuggestions` call would hit the paywall.
+    /// View layer reads this BEFORE presenting `SuggestMoreSheet` so it can
+    /// route directly to `PaywallSheet` instead.
+    var shouldPresentPaywall: Bool {
+        !Paywall.shared.isPro && usageCount >= Self.freeUseLimit
+    }
+
     /// Generate 5–8 suggestions for the given list. Returns `.paywallRequired`
     /// when the user has exhausted their free uses (the view layer should
     /// present `PaywallSheet` instead of the result sheet — T-156).
@@ -58,8 +65,7 @@ final class IntelligenceStore: ObservableObject {
         guard aiAvailable else {
             return .unavailable("Suggest More needs Apple Intelligence on iOS 26 or later.")
         }
-        // TODO(T-156): also bypass paywall when Paywall.isPro is true.
-        if usageCount >= Self.freeUseLimit {
+        if shouldPresentPaywall {
             return .paywallRequired
         }
 

@@ -5,6 +5,7 @@ struct ListView: View {
     @EnvironmentObject private var account: AccountStore
     @EnvironmentObject private var publish: PublishStore
     @EnvironmentObject private var intelligence: IntelligenceStore
+    @EnvironmentObject private var paywall: Paywall
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismiss
     @State private var list: ItemList
@@ -20,6 +21,7 @@ struct ListView: View {
     @State private var publishAfterOnboarding = false
     @State private var showEULA = false
     @State private var showSuggestMore = false
+    @State private var showSuggestMorePaywall = false
     @FocusState private var isAddFieldFocused: Bool
     @FocusState private var isSearchFocused: Bool
     @AppStorage("social_engaged") private var socialEngaged: Bool = false
@@ -306,6 +308,9 @@ struct ListView: View {
             }
             .environmentObject(intelligence)
         }
+        .sheet(isPresented: $showSuggestMorePaywall) {
+            PaywallSheet(paywall: paywall, reason: "suggest_more_cap_reached")
+        }
         .onChange(of: list) { _, newValue in
             store.update(newValue)
         }
@@ -350,7 +355,12 @@ struct ListView: View {
                 Divider()
 
                 Button {
-                    showSuggestMore = true
+                    if intelligence.shouldPresentPaywall {
+                        Analytics.suggestMorePaywallHit(listTitle: list.title)
+                        showSuggestMorePaywall = true
+                    } else {
+                        showSuggestMore = true
+                    }
                 } label: {
                     Label("Suggest More", systemImage: "wand.and.stars")
                 }
