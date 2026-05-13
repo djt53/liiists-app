@@ -3,7 +3,9 @@ import StoreKit
 
 /// Manages the liiists Pro one-time IAP via StoreKit 2.
 ///
-/// Free tier: up to 5 lists. Pro: unlimited.
+/// **Paywall is disabled for v1.0** — `freeListCap` is `Int.max`, so
+/// `canCreateList` always returns true. To re-enable, change `freeListCap`
+/// back to `10` and flip the `paywallEnabled` flag in `SettingsSheet`.
 /// See decisions/004-paywall-design.md.
 @MainActor
 final class Paywall: ObservableObject {
@@ -13,8 +15,9 @@ final class Paywall: ObservableObject {
     /// App Store Connect and the one in `Liiists.storekit`.
     static let proProductID = "com.davidtingle.liiists.pro"
 
-    /// Free tier list cap. The 6th list creation triggers the paywall.
-    static let freeListCap = 5
+    /// Free tier list cap. `Int.max` disables the gate for v1.0 launch.
+    /// Set back to 10 to re-enable the paywall.
+    static let freeListCap = Int.max
 
     @Published private(set) var isPro: Bool = false
     @Published private(set) var product: Product?

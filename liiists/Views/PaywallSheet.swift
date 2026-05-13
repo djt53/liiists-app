@@ -1,8 +1,10 @@
 import SwiftUI
 import StoreKit
 
-/// Nothing-design paywall presented when a free user attempts to create
-/// a 6th list (or from Settings as an upgrade prompt).
+/// Nothing-design paywall presented when a free user crosses a Pro gate —
+/// 11th list, 11th Suggest More tap, or a deliberate upgrade tap from
+/// Settings. `reason` drives both analytics and the headline copy so the
+/// trigger context reads naturally to the user.
 struct PaywallSheet: View {
     @ObservedObject var paywall: Paywall
     @Environment(\.colorScheme) private var colorScheme
@@ -31,7 +33,7 @@ struct PaywallSheet: View {
 
             // Headline
             VStack(alignment: .leading, spacing: Theme.spaceLG) {
-                Text("YOU'RE USING ALL\n5 FREE LISTS")
+                Text(headlineCopy)
                     .nothingLabel(size: 13, color: Theme.ndTextSecondary.resolve(for: colorScheme))
 
                 Text("liiists\nPro")
@@ -46,9 +48,9 @@ struct PaywallSheet: View {
             // Promise
             VStack(alignment: .leading, spacing: Theme.spaceMD) {
                 promiseRow("Unlimited lists")
+                promiseRow("Unlimited AI Suggest More")
                 promiseRow("All future Pro features")
-                promiseRow("One-time payment")
-                promiseRow("Yours forever")
+                promiseRow("One-time payment, yours forever")
             }
             .padding(.horizontal, Theme.spaceLG)
 
@@ -126,6 +128,17 @@ struct PaywallSheet: View {
 
     private var priceText: String {
         paywall.product?.displayPrice ?? "$6.99"
+    }
+
+    private var headlineCopy: String {
+        switch reason {
+        case "list_cap_reached":
+            return "YOU'RE USING ALL\n\(Paywall.freeListCap) FREE LISTS"
+        case "suggest_more_cap_reached":
+            return "YOU'VE USED ALL\n\(IntelligenceStore.freeUseLimit) FREE\nAI SUGGESTIONS"
+        default:
+            return "UPGRADE TO\nLIIISTS PRO"
+        }
     }
 
     private func promiseRow(_ text: String) -> some View {

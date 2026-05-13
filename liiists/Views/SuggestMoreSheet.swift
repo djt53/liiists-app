@@ -270,7 +270,7 @@ struct SuggestMoreSheet: View {
             // Parent should be presenting `PaywallSheet` instead of this view
             // (T-156). If we get here it means the parent forgot to gate;
             // fall back to a graceful error rather than silently misbehaving.
-            phase = .error("You've used your 5 free Suggest More tries. Upgrade to liiists Pro for unlimited.")
+            phase = .error("You've used your \(IntelligenceStore.freeUseLimit) free Suggest More tries. Upgrade to liiists Pro for unlimited.")
             Analytics.suggestMorePaywallHit(listTitle: list.title)
         case .unavailable(let message):
             phase = .error(message)

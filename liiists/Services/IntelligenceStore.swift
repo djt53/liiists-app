@@ -23,8 +23,10 @@ final class IntelligenceStore: ObservableObject {
     /// and empty results are free.
     @AppStorage("intelligence_usage_count") private var usageCount: Int = 0
 
-    /// Hardcoded paywall threshold from decision 011.
-    static let freeUseLimit = 5
+    /// Paywall threshold from decision 011. `Int.max` disables the gate for
+    /// v1.0 launch — Suggest More is unlimited and free. Set back to 10 to
+    /// re-enable, matching `Paywall.freeListCap`.
+    static let freeUseLimit = Int.max
 
     enum Outcome {
         case suggestions([String])

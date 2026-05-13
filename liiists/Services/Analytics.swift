@@ -1,6 +1,13 @@
 import Foundation
 import PostHog
 
+/// PostHog event wiring. Every `capture` site here is reviewed against the
+/// privacy policy at djt53.github.io/liiists-www/privacy/ — list titles,
+/// item text, and other user-generated content must never appear in event
+/// properties. Counts, types, durations, and event names are fine.
+///
+/// Function signatures still accept titles so callers don't need to change,
+/// but those parameters are intentionally unused here.
 enum Analytics {
     private static let apiKey = "phc_CYZfwiiqycRoarhRVdPjGDUmSkpAy8DKu3hFBeswh7xX"
 
@@ -15,56 +22,42 @@ enum Analytics {
 
     static func listCreated(title: String, type: String) {
         PostHogSDK.shared.capture("list_created", properties: [
-            "list_title": title,
             "list_type": type,
         ])
     }
 
     static func listDeleted(title: String) {
-        PostHogSDK.shared.capture("list_deleted", properties: [
-            "list_title": title,
-        ])
+        PostHogSDK.shared.capture("list_deleted")
     }
 
     static func listRenamed(from oldTitle: String, to newTitle: String) {
-        PostHogSDK.shared.capture("list_renamed", properties: [
-            "old_title": oldTitle,
-            "new_title": newTitle,
-        ])
+        PostHogSDK.shared.capture("list_renamed")
     }
 
     // MARK: - Item Events
 
     static func itemAdded(listTitle: String, itemCount: Int) {
         PostHogSDK.shared.capture("item_added", properties: [
-            "list_title": listTitle,
             "item_count": itemCount,
         ])
     }
 
     static func itemDeleted(listTitle: String) {
-        PostHogSDK.shared.capture("item_deleted", properties: [
-            "list_title": listTitle,
-        ])
+        PostHogSDK.shared.capture("item_deleted")
     }
 
     static func itemChecked(listTitle: String, checked: Bool) {
         PostHogSDK.shared.capture("item_checked", properties: [
-            "list_title": listTitle,
             "checked": checked,
         ])
     }
 
     static func itemEdited(listTitle: String) {
-        PostHogSDK.shared.capture("item_edited", properties: [
-            "list_title": listTitle,
-        ])
+        PostHogSDK.shared.capture("item_edited")
     }
 
     static func itemReordered(listTitle: String) {
-        PostHogSDK.shared.capture("item_reordered", properties: [
-            "list_title": listTitle,
-        ])
+        PostHogSDK.shared.capture("item_reordered")
     }
 
     // MARK: - Navigation
@@ -99,55 +92,44 @@ enum Analytics {
 
     static func publicListViewed(title: String, author: String?) {
         PostHogSDK.shared.capture("public_list_viewed", properties: [
-            "list_title": title,
-            "author": author ?? "anonymous",
+            "has_author": author != nil,
         ])
     }
 
     static func upvoteToggled(listTitle: String, isUpvoted: Bool) {
         PostHogSDK.shared.capture("upvote_toggled", properties: [
-            "list_title": listTitle,
             "is_upvoted": isUpvoted,
         ])
     }
 
     static func saveToggled(listTitle: String, isSaved: Bool) {
         PostHogSDK.shared.capture("save_toggled", properties: [
-            "list_title": listTitle,
             "is_saved": isSaved,
         ])
     }
 
     static func listCopiedToLocal(title: String, itemCount: Int) {
         PostHogSDK.shared.capture("list_copied_to_local", properties: [
-            "list_title": title,
             "item_count": itemCount,
         ])
     }
 
     static func listPublished(title: String) {
-        PostHogSDK.shared.capture("list_published", properties: [
-            "list_title": title,
-        ])
+        PostHogSDK.shared.capture("list_published")
     }
 
     static func listUnpublished(title: String) {
-        PostHogSDK.shared.capture("list_unpublished", properties: [
-            "list_title": title,
-        ])
+        PostHogSDK.shared.capture("list_unpublished")
     }
 
     // MARK: - Streaks
 
     static func streakLogged(listTitle: String) {
-        PostHogSDK.shared.capture("streak_logged", properties: [
-            "list_title": listTitle,
-        ])
+        PostHogSDK.shared.capture("streak_logged")
     }
 
     static func streakListCreated(title: String, cadence: String) {
         PostHogSDK.shared.capture("streak_list_created", properties: [
-            "list_title": title,
             "cadence": cadence,
         ])
     }
@@ -193,7 +175,6 @@ enum Analytics {
 
     static func shareExtensionUsed(listTitle: String, contentType: String) {
         PostHogSDK.shared.capture("share_extension_used", properties: [
-            "list_title": listTitle,
             "content_type": contentType,
         ])
     }
@@ -202,34 +183,28 @@ enum Analytics {
 
     static func suggestMoreInvoked(listTitle: String, itemCount: Int) {
         PostHogSDK.shared.capture("suggest_more_invoked", properties: [
-            "list_title": listTitle,
             "item_count": itemCount,
         ])
     }
 
     static func suggestMoreSucceeded(listTitle: String, itemCount: Int) {
         PostHogSDK.shared.capture("suggest_more_succeeded", properties: [
-            "list_title": listTitle,
             "item_count": itemCount,
         ])
     }
 
     static func suggestMoreFailed(listTitle: String, errorType: String) {
         PostHogSDK.shared.capture("suggest_more_failed", properties: [
-            "list_title": listTitle,
             "error_type": errorType,
         ])
     }
 
     static func suggestMorePaywallHit(listTitle: String) {
-        PostHogSDK.shared.capture("suggest_more_paywall_hit", properties: [
-            "list_title": listTitle,
-        ])
+        PostHogSDK.shared.capture("suggest_more_paywall_hit")
     }
 
     static func suggestMoreAdded(listTitle: String, selectedCount: Int, totalCount: Int) {
         PostHogSDK.shared.capture("suggest_more_added", properties: [
-            "list_title": listTitle,
             "selected_count": selectedCount,
             "total_count": totalCount,
         ])

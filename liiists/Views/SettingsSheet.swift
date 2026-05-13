@@ -2,11 +2,18 @@ import SwiftUI
 
 /// Minimal settings sheet — Pro status, Restore Purchases, About.
 /// Apple requires Restore Purchases to be reachable without hitting the paywall.
+///
+/// **v1.0 ships with the paywall disabled.** The `paywallEnabled` flag below
+/// hides the Pro status block and Restore Purchases row. Flip to `true`
+/// alongside `Paywall.freeListCap` and `IntelligenceStore.freeUseLimit` when
+/// reactivating monetization.
 struct SettingsSheet: View {
     @ObservedObject var paywall: Paywall
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismiss
     @State private var showPaywall = false
+
+    private let paywallEnabled = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -32,62 +39,66 @@ struct SettingsSheet: View {
 
             Spacer().frame(height: Theme.spaceXL)
 
-            // Pro status block
-            VStack(alignment: .leading, spacing: Theme.spaceSM) {
-                Text("STATUS")
-                    .nothingLabel(color: Theme.ndTextSecondary.resolve(for: colorScheme))
+            // Pro status block — hidden in v1.0 (paywall disabled)
+            if paywallEnabled {
+                VStack(alignment: .leading, spacing: Theme.spaceSM) {
+                    Text("STATUS")
+                        .nothingLabel(color: Theme.ndTextSecondary.resolve(for: colorScheme))
 
-                if paywall.isPro {
-                    HStack(spacing: Theme.spaceSM) {
-                        Rectangle()
-                            .fill(Theme.ndAccent)
-                            .frame(width: 8, height: 8)
-                        Text("liiists Pro")
+                    if paywall.isPro {
+                        HStack(spacing: Theme.spaceSM) {
+                            Rectangle()
+                                .fill(Theme.ndAccent)
+                                .frame(width: 8, height: 8)
+                            Text("liiists Pro")
+                                .font(Theme.headingFont(size: 22))
+                                .foregroundStyle(Theme.ndTextDisplay.resolve(for: colorScheme))
+                        }
+                        Text("Unlimited lists. Yours forever.")
+                            .font(Theme.bodyFont(size: 14))
+                            .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
+                    } else {
+                        Text("Free")
                             .font(Theme.headingFont(size: 22))
                             .foregroundStyle(Theme.ndTextDisplay.resolve(for: colorScheme))
-                    }
-                    Text("Unlimited lists. Yours forever.")
-                        .font(Theme.bodyFont(size: 14))
-                        .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
-                } else {
-                    Text("Free")
-                        .font(Theme.headingFont(size: 22))
-                        .foregroundStyle(Theme.ndTextDisplay.resolve(for: colorScheme))
-                    Text("Up to \(Paywall.freeListCap) lists")
-                        .font(Theme.bodyFont(size: 14))
-                        .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
+                        Text("Up to \(Paywall.freeListCap) lists")
+                            .font(Theme.bodyFont(size: 14))
+                            .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
 
-                    Button {
-                        showPaywall = true
-                    } label: {
-                        Text("UPGRADE TO PRO")
-                            .font(Theme.labelFont(size: 12))
-                            .tracking(12 * 0.08)
-                            .foregroundStyle(Theme.ndBlack.resolve(for: colorScheme))
-                            .padding(.horizontal, Theme.spaceLG)
-                            .frame(height: 44)
-                            .frame(maxWidth: .infinity)
-                            .background(Theme.ndTextDisplay.resolve(for: colorScheme))
-                            .clipShape(Capsule())
+                        Button {
+                            showPaywall = true
+                        } label: {
+                            Text("UPGRADE TO PRO")
+                                .font(Theme.labelFont(size: 12))
+                                .tracking(12 * 0.08)
+                                .foregroundStyle(Theme.ndBlack.resolve(for: colorScheme))
+                                .padding(.horizontal, Theme.spaceLG)
+                                .frame(height: 44)
+                                .frame(maxWidth: .infinity)
+                                .background(Theme.ndTextDisplay.resolve(for: colorScheme))
+                                .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.top, Theme.spaceMD)
                     }
-                    .buttonStyle(.plain)
-                    .padding(.top, Theme.spaceMD)
                 }
-            }
-            .padding(.horizontal, Theme.spaceLG)
+                .padding(.horizontal, Theme.spaceLG)
 
-            Spacer().frame(height: Theme.space2XL)
+                Spacer().frame(height: Theme.space2XL)
+            }
 
             // Actions
             VStack(spacing: 0) {
-                settingsRow(label: "Restore Purchases") {
-                    Task {
-                        await paywall.restorePurchases()
+                if paywallEnabled {
+                    settingsRow(label: "Restore Purchases") {
+                        Task {
+                            await paywall.restorePurchases()
+                        }
                     }
-                }
 
-                Divider()
-                    .background(Theme.ndBorder.resolve(for: colorScheme))
+                    Divider()
+                        .background(Theme.ndBorder.resolve(for: colorScheme))
+                }
 
                 settingsRow(label: "About liiists") {
                     // Future: about sheet
