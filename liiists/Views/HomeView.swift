@@ -44,6 +44,13 @@ struct HomeView: View {
     @Binding var showNewListFromDeepLink: Bool
     @State private var showNewList = false
     @State private var showPaywall = false
+
+    /// Streaks are hidden in v1.0. When `false`, any pre-existing
+    /// `.streak` list opens in `ListView` (will appear empty since
+    /// streak lists store dates, not items — markdown data on disk is
+    /// preserved). Flip back to `true` to restore the dedicated
+    /// `StreakListView` rendering. See log.md session 10.
+    private let streaksEnabled = false
     @State private var showSettings = false
     @State private var newListTitle = ""
     @State private var newListType: ItemList.ListType = .list
@@ -307,7 +314,7 @@ struct HomeView: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(for: String.self) { filename in
             if let list = store.lists.first(where: { $0.filename == filename }) {
-                if list.type == .streak {
+                if streaksEnabled && list.type == .streak {
                     StreakListView(list: list)
                         .onAppear { deepLinkFocusAdd = false }
                 } else {
@@ -487,6 +494,13 @@ struct NewListSheet: View {
     @Environment(\.colorScheme) private var colorScheme
     @FocusState private var isFocused: Bool
 
+    /// Streaks are hidden in v1.0. Flip back to `true` to reactivate the
+    /// new-list segment button and the cadence picker. Underlying
+    /// `ListType.streak`, `StreakCadence`, `StreakListView`, `StreakStats`,
+    /// and `StreakWidget` infrastructure stays in place; the streak case
+    /// just isn't user-creatable. See log.md session 10.
+    private let streaksEnabled = false
+
     private var isValid: Bool {
         !title.trimmingCharacters(in: .whitespaces).isEmpty
     }
@@ -569,7 +583,9 @@ struct NewListSheet: View {
                 HStack(spacing: 0) {
                     segmentButton(label: "LIST", icon: "list.bullet", type: .list)
                     segmentButton(label: "CHECKLIST", icon: "checklist", type: .checklist)
-                    segmentButton(label: "STREAK", icon: "flame", type: .streak)
+                    if streaksEnabled {
+                        segmentButton(label: "STREAK", icon: "flame", type: .streak)
+                    }
                 }
                 .background(
                     RoundedRectangle(cornerRadius: Theme.cornerRadius)
