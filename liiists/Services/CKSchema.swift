@@ -60,6 +60,26 @@ enum CKSchema {
         }
     }
 
+    // MARK: - EjectedAuthor
+
+    /// Apple guideline 1.2 — when the moderator (currently a single developer)
+    /// acts on a report by removing offending content, they also add the
+    /// author's CK user record ID here. Clients fetch this list on launch and
+    /// filter (a) feed records authored by ejected users and (b) prevent
+    /// ejected users from re-publishing locally. Populated manually via the
+    /// CK Dashboard. Decision 014.
+    enum EjectedAuthor {
+        static let recordType = "EjectedAuthor"
+
+        enum Field {
+            /// The ejected user's CK record name (string copy of their
+            /// CKRecord.ID — stored as a queryable string rather than a
+            /// reference so the moderator can paste IDs in the dashboard
+            /// without first creating a Users record reference).
+            static let userRecordName = "userRecordName"
+        }
+    }
+
     // MARK: - Report
 
     /// Apple guideline 1.2 — UGC apps need a flag mechanism. Reports go to a

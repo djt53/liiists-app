@@ -100,13 +100,42 @@ struct SettingsSheet: View {
                         .background(Theme.ndBorder.resolve(for: colorScheme))
                 }
 
-                settingsRow(label: "About liiists") {
-                    // Future: about sheet
+                // Apple guideline 1.2 — in-app contact info for UGC reports.
+                settingsRow(label: "Contact support") {
+                    if let url = URL(string: "mailto:david@enigmastudio.app?subject=liiists%20support") {
+                        UIApplication.shared.open(url)
+                    }
+                }
+
+                Divider()
+                    .background(Theme.ndBorder.resolve(for: colorScheme))
+
+                settingsRow(label: "Privacy policy") {
+                    if let url = URL(string: "https://djt53.github.io/liiists-www/privacy/") {
+                        UIApplication.shared.open(url)
+                    }
                 }
             }
             .padding(.horizontal, Theme.spaceLG)
 
             Spacer()
+
+            // About block — replaces the empty-tap About row. Apple Review
+            // sees an actual developer + contact at the bottom of Settings.
+            VStack(alignment: .leading, spacing: Theme.spaceXS) {
+                Text("liiists")
+                    .font(Theme.bodyFont(size: 14, weight: .medium))
+                    .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
+                Text("Made by Enigma Studio Inc.")
+                    .font(Theme.bodyFont(size: 13))
+                    .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
+                Text("david@enigmastudio.app")
+                    .font(Theme.monoFont(size: 12))
+                    .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, Theme.spaceLG)
+            .padding(.bottom, Theme.spaceLG)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Theme.ndBlack.resolve(for: colorScheme))

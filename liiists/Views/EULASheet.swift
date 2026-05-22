@@ -29,11 +29,29 @@ struct EULASheet: View {
 
             // Policy body — scrollable
             ScrollView {
-                Text(EULA.policyText)
-                    .font(Theme.bodyFont())
-                    .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(alignment: .leading, spacing: Theme.spaceMD) {
+                    Text(EULA.policyText)
+                        .font(Theme.bodyFont())
+                        .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    // Apple guideline 1.2 — in-app contact for UGC reports.
+                    Button {
+                        if let url = URL(string: "mailto:david@enigmastudio.app?subject=liiists%20content%20report") {
+                            UIApplication.shared.open(url)
+                        }
+                    } label: {
+                        HStack(spacing: Theme.spaceXS) {
+                            Image(systemName: "envelope")
+                                .font(.system(size: 13, weight: .regular))
+                            Text("Contact support")
+                                .font(Theme.bodyFont(size: Theme.bodySM, weight: .medium))
+                        }
+                        .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
+                    }
+                    .buttonStyle(.plain)
+                }
             }
 
             // Actions

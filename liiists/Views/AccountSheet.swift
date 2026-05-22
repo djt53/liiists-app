@@ -12,6 +12,9 @@ struct AccountSheet: View {
 
     @State private var editingHandle = false
     @State private var handleText: String = ""
+    @State private var showDeleteConfirm = false
+    @State private var isDeleting = false
+    @State private var deleteError: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.spaceLG) {
@@ -83,6 +86,27 @@ struct AccountSheet: View {
                 }
             }
 
+            if !publish.hiddenRecordNames.isEmpty {
+                Divider()
+                    .background(Theme.ndBorder.resolve(for: colorScheme))
+
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("HIDDEN POSTS")
+                            .nothingLabel()
+                        Text("\(publish.hiddenRecordNames.count) hidden from your feed")
+                            .font(Theme.bodyFont(size: Theme.bodySM))
+                            .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
+                    }
+                    Spacer()
+                    Button("Clear") {
+                        publish.clearHidden()
+                    }
+                    .font(Theme.bodyFont(size: Theme.bodySM, weight: .medium))
+                    .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
+                }
+            }
+
             Spacer(minLength: 0)
 
             // Sign out
@@ -99,6 +123,49 @@ struct AccountSheet: View {
                             .strokeBorder(Theme.ndAccent.opacity(0.4), lineWidth: 1)
                     )
             }
+            .disabled(isDeleting)
+
+            // Delete account — guideline 5.1.1(v). Wipes published lists,
+            // upvotes, display name, and the local Apple credential link.
+            Button(role: .destructive) {
+                Analytics.accountDeleteInitiated()
+                showDeleteConfirm = true
+            } label: {
+                Text("Delete account")
+                    .font(Theme.bodyFont(weight: .medium))
+                    .frame(maxWidth: .infinity, minHeight: Theme.buttonMinHeight)
+                    .foregroundStyle(.red)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: Theme.cornerRadius)
+                            .strokeBorder(Color.red.opacity(0.4), lineWidth: 1)
+                    )
+            }
+            .disabled(isDeleting)
+            .alert("Delete your account?", isPresented: $showDeleteConfirm) {
+                Button("Cancel", role: .cancel) { }
+                Button("Delete", role: .destructive) {
+                    Analytics.accountDeleteConfirmed()
+                    Task { await performDelete() }
+                }
+            } message: {
+                Text("Permanently removes your published lists, your upvotes, and your display name. Your local lists are not affected. To fully sign out of Apple, visit Settings → Apple ID → Sign in with Apple → liiists. This cannot be undone.")
+            }
+
+            if isDeleting {
+                HStack(spacing: Theme.spaceSM) {
+                    ProgressView()
+                    Text("Deleting…")
+                        .font(Theme.bodyFont(size: Theme.bodySM))
+                        .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
+                }
+            }
+
+            if let deleteError {
+                Text(deleteError)
+                    .font(Theme.bodyFont(size: Theme.captionSize))
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             Text("Sign in with Apple manages itself in iOS Settings → Apple ID. Signing out here just clears the local credential.")
                 .font(Theme.bodyFont(size: Theme.captionSize))
@@ -112,6 +179,24 @@ struct AccountSheet: View {
         .background(Theme.ndBlack.resolve(for: colorScheme))
         .presentationDetents([.medium])
         .presentationDragIndicator(.visible)
+    }
+
+    @MainActor
+    private func performDelete() async {
+        isDeleting = true
+        deleteError = nil
+        do {
+            try await publish.deleteAccount()
+            account.deleteAccount()
+            Analytics.accountDeleteSucceeded()
+            isDeleting = false
+            dismiss()
+        } catch {
+            let nsError = error as NSError
+            isDeleting = false
+            deleteError = "Couldn't delete your account. \(nsError.localizedDescription)"
+            Analytics.accountDeleteFailed(errorType: "\(nsError.domain)_\(nsError.code)")
+        }
     }
 
     private var displayLine: String {

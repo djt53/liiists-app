@@ -103,6 +103,25 @@ final class AccountStore: NSObject, ObservableObject {
         clearCredential()
     }
 
+    /// Local-side teardown for the account-deletion flow (guideline 5.1.1(v)).
+    /// Pairs with `PublishStore.deleteAccount()` which clears the CK side.
+    /// Does NOT revoke the Sign in with Apple credential itself — that's
+    /// user-driven via iOS Settings, and App Review accepts the in-app text
+    /// pointing users there.
+    func deleteAccount() {
+        Keychain.delete(Keys.appleUserID)
+        Keychain.delete(Keys.displayName)
+        displayName = nil
+        ckUserRecordID = nil
+
+        // Reset onboarding so a fresh sign-in returns to the publish prompt.
+        let defaults = UserDefaults.standard
+        defaults.removeObject(forKey: "social_engaged")
+        defaults.removeObject(forKey: "eula_accepted_version")
+
+        state = .signedOut
+    }
+
     private func clearCredential() {
         Keychain.delete(Keys.appleUserID)
         ckUserRecordID = nil

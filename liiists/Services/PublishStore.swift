@@ -34,6 +34,19 @@ final class PublishStore: ObservableObject {
     /// many other users have reported. Persisted in UserDefaults.
     @Published private(set) var reportedRecordNames: Set<String> = []
 
+    /// Set of PublishedList record names the current user has one-tap hidden.
+    /// Distinct from Report (which is a moderation signal counted across
+    /// users) and Block (which hides an entire author). Decision 014 — local
+    /// only, no CK round-trip. Persisted in UserDefaults.
+    @Published private(set) var hiddenRecordNames: Set<String> = []
+
+    /// Set of CK user record names the moderator (developer) has ejected via
+    /// the CK Dashboard. Fetched once per launch. Drives both the feed filter
+    /// and the publish gate (ejected users can't push new content). Apple
+    /// guideline 1.2's "act on objectionable content within 24 hours by
+    /// ejecting the offending user" requirement. Decision 014.
+    @Published private(set) var ejectedAuthorIDs: Set<String> = []
+
     /// Authors the user has blocked. Local-only per decision 007 — filters
     /// Discover client-side. Stored as full BlockedAuthor records (with
     /// snapshot display name) so the AccountSheet unblock UI has something
@@ -65,6 +78,7 @@ final class PublishStore: ObservableObject {
     private let savedKey = "liiists.savedSummaries"
     private let reportedKey = "liiists.reportedRecordNames"
     private let blockedKey = "liiists.blockedAuthors"
+    private let hiddenKey = "liiists.hiddenRecordNames"
 
     private var feedCursor: CKQueryOperation.Cursor?
 
@@ -95,6 +109,9 @@ final class PublishStore: ObservableObject {
            let decoded = try? JSONDecoder().decode([BlockedAuthor].self, from: data) {
             blockedAuthors = decoded
         }
+        if let arr = defaults.stringArray(forKey: hiddenKey) {
+            hiddenRecordNames = Set(arr)
+        }
     }
 
     private func persistPublishedIndex() {
@@ -121,8 +138,56 @@ final class PublishStore: ObservableObject {
         }
     }
 
+    private func persistHidden() {
+        defaults.set(Array(hiddenRecordNames), forKey: hiddenKey)
+    }
+
     func hasReported(_ recordName: String) -> Bool {
         reportedRecordNames.contains(recordName)
+    }
+
+    func isHidden(_ recordName: String) -> Bool {
+        hiddenRecordNames.contains(recordName)
+    }
+
+    /// One-tap hide. Removes the record from the in-memory feed and persists
+    /// the hide so it stays hidden across reloads and reinstalls of the app's
+    /// container. Local-only, no CK round-trip. Decision 014.
+    func hide(_ recordName: String) {
+        hiddenRecordNames.insert(recordName)
+        persistHidden()
+        feed.removeAll { $0.recordName == recordName }
+    }
+
+    /// Wipe the entire hidden list. Surfaced from AccountSheet so the user
+    /// can un-hide everything if they change their mind.
+    func clearHidden() {
+        hiddenRecordNames = []
+        persistHidden()
+    }
+
+    /// Pull the moderator-maintained ejection list from CloudKit. Called from
+    /// `liiistsApp` once per launch — light query (typically zero or single-
+    /// digit records), no pagination needed. Silently no-ops on CK failure;
+    /// the feed-side filter degrades to "show everything not otherwise
+    /// filtered", which is safer than crashing the feed load.
+    func fetchEjectedAuthors() async {
+        let query = CKQuery(
+            recordType: CKSchema.EjectedAuthor.recordType,
+            predicate: NSPredicate(value: true)
+        )
+        do {
+            let result = try await publicDB.records(matching: query, resultsLimit: 200)
+            var ids: Set<String> = []
+            for (_, recordResult) in result.matchResults {
+                guard case .success(let record) = recordResult,
+                      let id = record[CKSchema.EjectedAuthor.Field.userRecordName] as? String else { continue }
+                ids.insert(id)
+            }
+            ejectedAuthorIDs = ids
+        } catch {
+            print("[PublishStore] fetchEjectedAuthors failed: \(error.localizedDescription)")
+        }
     }
 
     func isAuthorBlocked(userID: String) -> Bool {
@@ -164,6 +229,24 @@ final class PublishStore: ObservableObject {
         guard account.isSignedIn else {
             lastError = "Sign in to publish."
             print("[PublishStore] publish aborted — not signed in")
+            return
+        }
+
+        // Content-filter gate (decision 014). Reject the publish before any
+        // CK call so the user sees an immediate, specific error.
+        let itemTexts = list.items.map { $0.text }
+        if let term = ContentFilter.firstMatchInList(title: list.title, items: itemTexts) {
+            lastError = "This list can't be published — it contains language that violates our content policy (\"\(term)\")."
+            print("[PublishStore] publish blocked by ContentFilter, term=\(term)")
+            return
+        }
+
+        // Ejection gate (decision 014). If this user has been ejected by the
+        // moderator for a prior violation, they can't publish new content.
+        if let userID = account.ckUserRecordID?.recordName,
+           ejectedAuthorIDs.contains(userID) {
+            lastError = "Publishing is disabled for this account due to a prior content policy violation. Contact support."
+            print("[PublishStore] publish blocked — author ejected")
             return
         }
 
@@ -228,6 +311,79 @@ final class PublishStore: ObservableObject {
     func republishIfNeeded(_ list: ItemList) {
         guard account.isSignedIn, isPublished(filename: list.filename) else { return }
         Task { await publish(list) }
+    }
+
+    /// Deletes everything this user has published, plus every upvote they've
+    /// cast. Reports they filed remain (they're moderation signals, not
+    /// personal content — see decision 014). Local indexes are wiped after
+    /// CK succeeds so a re-sign-in starts truly fresh.
+    ///
+    /// Throws on CK failure. Caller must surface the error and not advance
+    /// the account-deletion flow — orphaned records break guideline 5.1.1(v).
+    func deleteAccount() async throws {
+        guard let userID = account.ckUserRecordID else {
+            throw NSError(domain: "PublishStore", code: -1, userInfo: [
+                NSLocalizedDescriptionKey: "Not signed in to iCloud."
+            ])
+        }
+
+        let userRef = CKRecord.Reference(recordID: userID, action: .none)
+
+        // 1. Delete this user's PublishedList records.
+        //    Upvotes on these lists cascade via Upvote.listRef's deleteSelf.
+        let publishedQuery = CKQuery(
+            recordType: CKSchema.PublishedList.recordType,
+            predicate: NSPredicate(format: "creatorUserRecordID = %@", userRef)
+        )
+        try await deleteAllMatching(query: publishedQuery)
+
+        // 2. Delete this user's Upvote records on other people's lists.
+        //    (Their own lists' upvotes already cascaded in step 1.)
+        let upvoteQuery = CKQuery(
+            recordType: CKSchema.Upvote.recordType,
+            predicate: NSPredicate(format: "creatorUserRecordID = %@", userRef)
+        )
+        try await deleteAllMatching(query: upvoteQuery)
+
+        // 3. Wipe local indexes. Defaults clears after CK so a mid-flight
+        //    failure leaves the user able to retry without losing state.
+        publishedIndex = [:]
+        savedSummaries = []
+        blockedAuthors = []
+        reportedRecordNames = []
+        upvotedRecordNames = []
+        hiddenRecordNames = []
+        persistPublishedIndex()
+        persistSaved()
+        persistBlocked()
+        persistReported()
+        persistUpvoted()
+        persistHidden()
+        feed = []
+        feedCursor = nil
+        feedHasMore = true
+        lastError = nil
+    }
+
+    /// Paginated delete — CK caps query result sets, so we loop on the cursor.
+    private func deleteAllMatching(query: CKQuery) async throws {
+        var cursor: CKQueryOperation.Cursor? = nil
+        repeat {
+            let result: (matchResults: [(CKRecord.ID, Result<CKRecord, Error>)], queryCursor: CKQueryOperation.Cursor?)
+            if let c = cursor {
+                result = try await publicDB.records(continuingMatchFrom: c, resultsLimit: 100)
+            } else {
+                result = try await publicDB.records(matching: query, resultsLimit: 100)
+            }
+            let ids = result.matchResults.compactMap { recordID, recordResult -> CKRecord.ID? in
+                if case .success = recordResult { return recordID }
+                return nil
+            }
+            if !ids.isEmpty {
+                _ = try await publicDB.modifyRecords(saving: [], deleting: ids)
+            }
+            cursor = result.queryCursor
+        } while cursor != nil
     }
 
     /// Remove a published list from the public DB. Upvotes cascade away
@@ -328,14 +484,23 @@ final class PublishStore: ObservableObject {
             }
 
             // Filter: hide lists this user has personally reported, lists by
-            // blocked authors, and any list with ≥ Report.hideThreshold
+            // blocked authors, lists the user has hidden one-tap, lists by
+            // moderator-ejected authors, lists that fail the ContentFilter
+            // pass (decision 014 — catches pre-existing CK records authored
+            // before the filter shipped), and any list with ≥ Report.hideThreshold
             // distinct reporters globally. Apple guideline 1.2 — reactive
-            // moderation. Decisions 007 (Block, Report).
+            // moderation. Decisions 007 + 014.
             let reportCounts = await fetchReportCounts(for: newSummaries.map { $0.recordName })
             let blockedIDs = Set(blockedAuthors.map { $0.userID })
             newSummaries = newSummaries.filter { summary in
                 if reportedRecordNames.contains(summary.recordName) { return false }
+                if hiddenRecordNames.contains(summary.recordName) { return false }
                 if let authorID = summary.authorUserID, blockedIDs.contains(authorID) { return false }
+                if let authorID = summary.authorUserID, ejectedAuthorIDs.contains(authorID) { return false }
+                if !summary.isSeed,
+                   ContentFilter.firstMatchInList(title: summary.title, items: summary.items) != nil {
+                    return false
+                }
                 let count = reportCounts[summary.recordName] ?? 0
                 return count < CKSchema.Report.hideThreshold
             }

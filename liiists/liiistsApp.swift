@@ -33,6 +33,8 @@ struct liiistsApp: App {
                     store.republishHook = { [weak publish] list in
                         publish?.republishIfNeeded(list)
                     }
+                    // Pull moderator's ejection list — guideline 1.2.
+                    await publish.fetchEjectedAuthors()
                 }
                 .onOpenURL { url in
                     handleDeepLink(url)

@@ -16,6 +16,7 @@ struct PublicListView: View {
     @State private var showReportDialog = false
     @State private var reportConfirm = false
     @State private var showBlockConfirm = false
+    @State private var hideConfirm = false
 
     private var isUpvoted: Bool {
         publish.upvotedRecordNames.contains(summary.recordName)
@@ -91,6 +92,13 @@ struct PublicListView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("You won't see any lists from this author. You can unblock from Account.")
+        }
+        .alert("Hidden", isPresented: $hideConfirm) {
+            Button("OK", role: .cancel) {
+                dismiss()
+            }
+        } message: {
+            Text("This list won't show up in your feed anymore.")
         }
         .alert("New list", isPresented: Binding(
             get: { newListPromptItem != nil },
@@ -199,6 +207,18 @@ struct PublicListView: View {
             }
 
             Divider()
+
+            // One-tap hide — guideline 1.2 requirement that anonymous-UGC
+            // apps offer a way to immediately remove a post from the feed.
+            // Distinct from Report (moderation signal) and Block (author).
+            // Decision 014.
+            Button {
+                publish.hide(summary.recordName)
+                hideConfirm = true
+            } label: {
+                Label("Hide this post", systemImage: "eye.slash")
+            }
+            .disabled(publish.isHidden(summary.recordName))
 
             Button(role: .destructive) {
                 showReportDialog = true

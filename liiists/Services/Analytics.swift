@@ -209,4 +209,24 @@ enum Analytics {
             "total_count": totalCount,
         ])
     }
+
+    // MARK: - Account (T-210, guideline 5.1.1(v))
+
+    static func accountDeleteInitiated() {
+        PostHogSDK.shared.capture("account_delete_initiated")
+    }
+
+    static func accountDeleteConfirmed() {
+        PostHogSDK.shared.capture("account_delete_confirmed")
+    }
+
+    static func accountDeleteSucceeded() {
+        PostHogSDK.shared.capture("account_delete_succeeded")
+    }
+
+    static func accountDeleteFailed(errorType: String) {
+        PostHogSDK.shared.capture("account_delete_failed", properties: [
+            "error_type": errorType,
+        ])
+    }
 }
