@@ -8,7 +8,7 @@ List apps are either too simple or too complex. None are designed to work with A
 
 ## What's built
 
-**iOS app** -clean, native SwiftUI list app on [TestFlight](https://testflight.apple.com/). Create lists, check items off, search across everything. Syncs via iCloud Drive.
+**iOS app** -clean, native SwiftUI list app, [live on the App Store](https://apps.apple.com/app/id6761671906). Create lists, check items off, search across everything. Syncs via iCloud Drive.
 
 **CLI** -manage lists from your terminal. Written in Go, zero dependencies.
 
