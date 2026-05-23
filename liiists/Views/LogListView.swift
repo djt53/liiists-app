@@ -22,15 +22,58 @@ struct LogListView: View {
     @State private var showPublishOnboarding = false
     @State private var publishAfterOnboarding = false
     @State private var showEULA = false
+    @State private var isAdding = false
+    @State private var isSubmitting = false
+    @State private var showSearch = false
+    @State private var searchText = ""
     @FocusState private var isAddFieldFocused: Bool
+    @FocusState private var isSearchFocused: Bool
     @AppStorage("social_engaged") private var socialEngaged: Bool = false
+    @AppStorage private var showTime: Bool
 
     private var isPublished: Bool {
         publish.isPublished(filename: list.filename)
     }
 
+    private var addFieldVisible: Bool {
+        list.items.isEmpty || isAdding
+    }
+
+    private var filteredItems: [ListItem] {
+        guard !searchText.isEmpty else { return list.items }
+        let query = searchText.lowercased()
+        return list.items.filter { Self.searchableText(for: $0).contains(query) }
+    }
+
+    /// Lowercased haystack covering the entry text plus the date and time as
+    /// they're displayed (or commonly typed). Supports queries like "may 14",
+    /// "yesterday", "2026", "14:30".
+    private static func searchableText(for item: ListItem) -> String {
+        var parts: [String] = [item.text]
+        if let ts = item.timestamp {
+            let cal = Calendar.current
+            if cal.isDateInToday(ts) { parts.append("today") }
+            if cal.isDateInYesterday(ts) { parts.append("yesterday") }
+            for fmt in Self.searchDateFormatters {
+                parts.append(fmt.string(from: ts))
+            }
+        }
+        return parts.joined(separator: " ").lowercased()
+    }
+
+    private static let searchDateFormatters: [DateFormatter] = {
+        let formats = ["MMM d", "MMMM d", "MMM d, yyyy", "yyyy-MM-dd", "yyyy", "HH:mm"]
+        return formats.map { fmt in
+            let f = DateFormatter()
+            f.dateFormat = fmt
+            f.locale = Locale(identifier: "en_US_POSIX")
+            return f
+        }
+    }()
+
     init(list: ItemList) {
         _list = State(initialValue: list)
+        _showTime = AppStorage(wrappedValue: false, "log_show_time_\(list.filename)")
     }
 
     var body: some View {
@@ -39,9 +82,14 @@ struct LogListView: View {
             if isPublished {
                 publicChip
                     .padding(.horizontal, Theme.spaceMD)
-                    .padding(.bottom, Theme.spaceMD)
+                    .padding(.bottom, showSearch ? Theme.spaceSM : Theme.spaceMD)
             }
-            addField
+            if showSearch {
+                searchBar
+            }
+            if addFieldVisible {
+                addField
+            }
             entriesList
         }
         .background(Theme.ndBlack.resolve(for: colorScheme))
@@ -108,7 +156,7 @@ struct LogListView: View {
                     editingItemID = nil
                 }
             )
-            .presentationDetents([.medium, .large])
+            .presentationDetents([.fraction(0.8)])
             .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showPublishOnboarding) {
@@ -146,9 +194,18 @@ struct LogListView: View {
         .onChange(of: list) { _, newValue in
             store.update(newValue)
         }
+        .onChange(of: isAddFieldFocused) { _, focused in
+            if !focused && !isSubmitting {
+                if !newEntryText.trimmingCharacters(in: .whitespaces).isEmpty {
+                    addEntry()
+                } else if !list.items.isEmpty {
+                    isAdding = false
+                }
+            }
+        }
         .onAppear {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                isAddFieldFocused = true
+            if list.items.isEmpty {
+                startAdding()
             }
         }
     }
@@ -162,11 +219,34 @@ struct LogListView: View {
                 .foregroundStyle(Theme.ndTextDisplay.resolve(for: colorScheme))
                 .tracking(-0.01 * Theme.headingSize)
             Spacer()
+            Button {
+                withAnimation(.easeOut(duration: 0.2)) {
+                    showSearch.toggle()
+                    if showSearch {
+                        isSearchFocused = true
+                    } else {
+                        searchText = ""
+                    }
+                }
+            } label: {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 16, weight: .light))
+                    .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
+                    .frame(width: 36, height: 36)
+            }
+            Button {
+                startAdding()
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 16, weight: .light))
+                    .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
+                    .frame(width: 36, height: 36)
+            }
             overflowMenu
         }
         .padding(.horizontal, Theme.spaceMD)
         .padding(.top, Theme.spaceLG)
-        .padding(.bottom, isPublished ? Theme.spaceXS : Theme.spaceMD)
+        .padding(.bottom, isPublished ? Theme.spaceXS : (showSearch ? Theme.spaceSM : Theme.spaceMD))
     }
 
     private var overflowMenu: some View {
@@ -182,6 +262,12 @@ struct LogListView: View {
                 shareLogAsText()
             } label: {
                 Label("Copy as Text", systemImage: "doc.on.doc")
+            }
+
+            Button {
+                showTime.toggle()
+            } label: {
+                Label(showTime ? "Hide Time" : "Show Time", systemImage: "clock")
             }
 
             Divider()
@@ -215,6 +301,34 @@ struct LogListView: View {
                 .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
                 .frame(width: 36, height: 36)
         }
+    }
+
+    // MARK: - Search bar
+
+    private var searchBar: some View {
+        HStack(spacing: Theme.spaceSM) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 14, weight: .light))
+                .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
+            TextField("Search\u{2026}", text: $searchText)
+                .font(Theme.bodyFont())
+                .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
+                .focused($isSearchFocused)
+            Button {
+                searchText = ""
+                showSearch = false
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
+            }
+        }
+        .padding(.horizontal, Theme.spaceMD)
+        .padding(.vertical, Theme.spaceSM)
+        .background(Theme.ndSurfaceRaised.resolve(for: colorScheme))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.cornerRadius))
+        .padding(.horizontal, Theme.spaceMD)
+        .padding(.bottom, Theme.spaceSM)
     }
 
     // MARK: - Add field
@@ -256,8 +370,8 @@ struct LogListView: View {
 
     private var entriesList: some View {
         List {
-            ForEach($list.items) { $item in
-                LogEntryRow(item: $item) {
+            ForEach(searchText.isEmpty ? $list.items : .constant(filteredItems)) { $item in
+                LogEntryRow(item: $item, showTime: showTime) {
                     pendingTimestamp = item.timestamp ?? Date()
                     editingItemID = item.id
                 }
@@ -315,6 +429,13 @@ struct LogListView: View {
 
     // MARK: - Actions
 
+    private func startAdding() {
+        isAdding = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            isAddFieldFocused = true
+        }
+    }
+
     private func addEntry() {
         let trimmed = newEntryText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -323,14 +444,17 @@ struct LogListView: View {
         // user sees in the timestamp picker.
         let rounded = roundedToMinute(now)
         let entry = ListItem(text: trimmed, timestamp: rounded)
+        isSubmitting = true
         withAnimation(Theme.nothingEasing) {
             list.items.insert(entry, at: 0)
         }
         Theme.lightHaptic()
         Analytics.logEntryAdded(entryCount: list.items.count)
         newEntryText = ""
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+        isAdding = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
             isAddFieldFocused = true
+            isSubmitting = false
         }
     }
 
@@ -396,6 +520,7 @@ struct LogListView: View {
 
 struct LogEntryRow: View {
     @Binding var item: ListItem
+    let showTime: Bool
     let onDateTap: () -> Void
     @Environment(\.colorScheme) private var colorScheme
 
@@ -440,9 +565,11 @@ struct LogEntryRow: View {
                     Text(dateLabel)
                         .font(Theme.bodyFont(size: 14, weight: .medium))
                         .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
-                    Text(timeLabel)
-                        .font(Theme.bodyFont(size: 11))
-                        .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
+                    if showTime {
+                        Text(timeLabel)
+                            .font(Theme.bodyFont(size: 11))
+                            .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
+                    }
                 }
                 .frame(width: 72, alignment: .leading)
             }

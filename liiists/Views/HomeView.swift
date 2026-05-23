@@ -228,14 +228,6 @@ struct HomeView: View {
                         .frame(width: 32, height: 44)
                 }
                 Button {
-                    showSettings = true
-                } label: {
-                    Image(systemName: "gearshape")
-                        .font(.system(size: 20, weight: .light))
-                        .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
-                        .frame(width: 44, height: 44)
-                }
-                Button {
                     attemptCreateList()
                 } label: {
                     Image(systemName: "plus")
@@ -372,6 +364,13 @@ struct HomeView: View {
                 } label: {
                     Label("Account", systemImage: "person.crop.circle")
                 }
+            }
+
+            Divider()
+            Button {
+                showSettings = true
+            } label: {
+                Label("Settings", systemImage: "gearshape")
             }
         } label: {
             Image(systemName: "ellipsis")
