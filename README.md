@@ -52,7 +52,7 @@ created: 2026-05-23
 - Frontmatter is optional — a bare bullet list is a valid list
 - Title resolves from: frontmatter > H1 heading > filename
 
-Same format the CLI and MCP server read and write. Edit a list from any of the three surfaces and the others see it next sync. (CLI/MCP support for log lists is planned; today they round-trip log files as plain text without timestamp-awareness.)
+Same format the CLI and MCP server read and write. Edit a list from any of the three surfaces and the others see it next sync.
 
 ## Structure
 
