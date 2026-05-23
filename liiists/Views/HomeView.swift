@@ -317,6 +317,9 @@ struct HomeView: View {
                 if streaksEnabled && list.type == .streak {
                     StreakListView(list: list)
                         .onAppear { deepLinkFocusAdd = false }
+                } else if list.type == .log {
+                    LogListView(list: list)
+                        .onAppear { deepLinkFocusAdd = false }
                 } else {
                     ListView(list: list, focusAddField: deepLinkFocusAdd)
                         .onAppear { deepLinkFocusAdd = false }
@@ -438,6 +441,7 @@ struct ListRow: View {
         case .streak: return "flame"
         case .checklist: return "checklist"
         case .list: return "list.bullet"
+        case .log: return "clock"
         }
     }
 
@@ -451,6 +455,8 @@ struct ListRow: View {
         case .checklist:
             return list.itemCount > 0 ? "\(list.checkedCount)/\(list.itemCount)" : nil
         case .list:
+            return list.itemCount > 0 ? "\(list.itemCount)" : nil
+        case .log:
             return list.itemCount > 0 ? "\(list.itemCount)" : nil
         }
     }
@@ -583,6 +589,7 @@ struct NewListSheet: View {
                 HStack(spacing: 0) {
                     segmentButton(label: "LIST", icon: "list.bullet", type: .list)
                     segmentButton(label: "CHECKLIST", icon: "checklist", type: .checklist)
+                    segmentButton(label: "LOG", icon: "clock", type: .log)
                     if streaksEnabled {
                         segmentButton(label: "STREAK", icon: "flame", type: .streak)
                     }

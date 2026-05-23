@@ -405,13 +405,34 @@ final class PublishStore: ObservableObject {
         // Decision 010: only client-controlled fields go on the record. Author,
         // timestamps, and upvote count are derived from CK system fields and
         // separately-counted Upvote records on read.
-        let itemTexts = list.items.map { $0.text }
+        //
+        // Decision 016: log entries get serialized with their timestamp inline
+        // so Discover viewers see the chronology. No schema change needed —
+        // PublicListView renders each items[i] as plain text.
+        let itemTexts: [String] = list.items.map { item in
+            if list.type == .log, let ts = item.timestamp {
+                return "\(Self.logPublishFormatter.string(from: ts))\(Self.logPublishSeparator)\(item.text)"
+            }
+            return item.text
+        }
         record[CKSchema.PublishedList.Field.title] = list.title as CKRecordValue
         record[CKSchema.PublishedList.Field.items] = itemTexts.joined(separator: "\n") as CKRecordValue
         record[CKSchema.PublishedList.Field.itemCount] = itemTexts.count as CKRecordValue
         record[CKSchema.PublishedList.Field.authorDisplayName] = (account.displayName ?? "") as CKRecordValue
         record[CKSchema.PublishedList.Field.sourceFilename] = list.filename as CKRecordValue
     }
+
+    /// Friendly space-separated date+time used only for log entries when they
+    /// cross the wire to Discover. The on-disk markdown still uses the strict
+    /// `T` ISO form via MarkdownParser; this is purely for display.
+    private static let logPublishFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd HH:mm"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+
+    private static let logPublishSeparator = "  \u{2014}  "
 
     // MARK: - Discover feed
 

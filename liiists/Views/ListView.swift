@@ -31,10 +31,11 @@ struct ListView: View {
     }
 
     /// Whether to render the "Suggest More" overflow entry. Hidden entirely
-    /// for streak lists (decision 011) and on devices without Apple
-    /// Intelligence. The disabled-when-N<2 case shows the entry but greys it.
+    /// for streak and log lists (decisions 011, 016) and on devices without
+    /// Apple Intelligence. The disabled-when-N<2 case shows the entry but
+    /// greys it.
     private var showSuggestMoreEntry: Bool {
-        list.type != .streak && intelligence.aiAvailable
+        list.type != .streak && list.type != .log && intelligence.aiAvailable
     }
 
     var isNewList: Bool = false

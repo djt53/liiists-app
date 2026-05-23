@@ -6,15 +6,16 @@ import Foundation
 /// ```
 /// ---                          (optional frontmatter)
 /// title: My List
-/// type: checklist              (or list, or streak)
+/// type: checklist              (or list, streak, log)
 /// created: 2026-03-26
 /// cadence: daily               (only for streak)
 /// ---
 /// # Optional H1 Title
 ///
-/// - [ ] Item one              (checklist)
-/// - Item two                  (plain list)
-/// - 2026-05-03                (streak — one ISO date per entry)
+/// - [ ] Item one                       (checklist)
+/// - Item two                           (plain list)
+/// - 2026-05-03                         (streak — one ISO date per entry)
+/// - 2026-05-22T14:30 — Coffee + bagel  (log — ISO datetime + em-dash + text)
 /// ```
 enum MarkdownParser {
 
@@ -24,6 +25,21 @@ enum MarkdownParser {
         f.locale = Locale(identifier: "en_US_POSIX")
         return f
     }()
+
+    /// Naive local datetime, minute resolution — used for log entries. See
+    /// decision 016. No timezone suffix: personal logs shouldn't shift when
+    /// the user crosses a time zone.
+    private static let logTimestampFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd'T'HH:mm"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+
+    /// Separator between a log entry's timestamp and its text. Em-dash with
+    /// spaces on both sides. First occurrence after the timestamp wins —
+    /// subsequent em-dashes belong to the entry text.
+    private static let logSeparator = " \u{2014} "
 
     // MARK: - Parse
 
@@ -55,6 +71,7 @@ enum MarkdownParser {
         switch typeStr {
         case "checklist": listType = .checklist
         case "streak": listType = .streak
+        case "log": listType = .log
         default: listType = .list
         }
         let titleFromFM = frontmatter.removeValue(forKey: "title")
@@ -92,6 +109,30 @@ enum MarkdownParser {
                 }
             }
             streakEntries.sort(by: >)
+        } else if listType == .log {
+            // Log parsing: `- <ISO datetime> — <text>` per bullet. First em-dash
+            // (U+2014 with spaces on both sides) after the timestamp delimits
+            // text. Bullets without a parseable timestamp fall back to a
+            // textless item (defensive — should never happen on round-tripped
+            // files).
+            while index < lines.count {
+                let line = lines[index]
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                index += 1
+
+                if trimmed.hasPrefix("# ") && h1Title == nil {
+                    h1Title = String(trimmed.dropFirst(2))
+                    continue
+                }
+
+                if let item = parseLogEntry(trimmed) {
+                    items.append(item)
+                }
+            }
+            // Sort newest first regardless of on-disk order.
+            items.sort { (a, b) in
+                (a.timestamp ?? .distantPast) > (b.timestamp ?? .distantPast)
+            }
         } else {
             // Standard list/checklist parsing
             while index < lines.count {
@@ -148,6 +189,16 @@ enum MarkdownParser {
         return ListItem(text: text)
     }
 
+    private static func parseLogEntry(_ line: String) -> ListItem? {
+        guard line.hasPrefix("- ") else { return nil }
+        let body = String(line.dropFirst(2))
+        guard let sepRange = body.range(of: logSeparator) else { return nil }
+        let timestampStr = String(body[..<sepRange.lowerBound]).trimmingCharacters(in: .whitespaces)
+        let text = String(body[sepRange.upperBound...])
+        guard let timestamp = logTimestampFormatter.date(from: timestampStr) else { return nil }
+        return ListItem(text: text, timestamp: timestamp)
+    }
+
     // MARK: - Write
 
     static func write(_ list: ItemList) -> String {
@@ -193,6 +244,16 @@ enum MarkdownParser {
         case .list:
             for item in list.items {
                 lines.append("- \(item.text)")
+            }
+        case .log:
+            // Reverse-chrono on disk so the file reads the same way the app
+            // displays. Items missing a timestamp sink to the bottom.
+            let sorted = list.items.sorted { (a, b) in
+                (a.timestamp ?? .distantPast) > (b.timestamp ?? .distantPast)
+            }
+            for item in sorted {
+                guard let ts = item.timestamp else { continue }
+                lines.append("- \(logTimestampFormatter.string(from: ts))\(logSeparator)\(item.text)")
             }
         }
 

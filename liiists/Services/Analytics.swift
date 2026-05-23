@@ -134,6 +134,22 @@ enum Analytics {
         ])
     }
 
+    // MARK: - Logs (decision 016)
+
+    static func logEntryAdded(entryCount: Int) {
+        PostHogSDK.shared.capture("log_entry_added", properties: [
+            "entry_count": entryCount,
+        ])
+    }
+
+    static func logEntryDeleted() {
+        PostHogSDK.shared.capture("log_entry_deleted")
+    }
+
+    static func logEntryTimestampEdited() {
+        PostHogSDK.shared.capture("log_entry_timestamp_edited")
+    }
+
     // MARK: - Paywall
 
     static func paywallShown(reason: String) {

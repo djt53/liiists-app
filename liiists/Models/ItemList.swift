@@ -23,6 +23,7 @@ struct ItemList: Identifiable, Equatable {
         case list
         case checklist
         case streak
+        case log
     }
 
     init(
