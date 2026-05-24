@@ -43,6 +43,14 @@ struct liiistsApp: App {
     }
 
     private func handleDeepLink(_ url: URL) {
+        // Universal link from `liiists link` QR (T-35). Routing-only for now;
+        // T-34 will plumb in security-scoped bookmark consumption of ?path=….
+        if url.scheme == "https",
+           url.host() == "davidtingle.com",
+           url.path == "/liiists/link" {
+            return
+        }
+
         guard url.scheme == "liiists" else { return }
         let host = url.host()
         let filename = url.pathComponents.dropFirst().joined(separator: "/")

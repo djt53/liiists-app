@@ -73,6 +73,8 @@ targets:
           - iCloud.com.davidtingle.liiists
         com.apple.developer.applesignin:
           - Default
+        com.apple.developer.associated-domains:
+          - applinks:davidtingle.com
     settings:
       base:
         TARGETED_DEVICE_FAMILY: "1"
