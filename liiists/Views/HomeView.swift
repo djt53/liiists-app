@@ -182,7 +182,7 @@ struct HomeView: View {
                         // the add field — they show the first circle ready to tap.
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                             deepLinkFocusAdd = newList.type != .streak
-                            path.append(newList.filename)
+                            path.append(newList.id)
                         }
                     },
                     onCancel: {
@@ -271,7 +271,7 @@ struct HomeView: View {
             // List rows
             List {
                 ForEach(sortedLists) { list in
-                    NavigationLink(value: list.filename) {
+                    NavigationLink(value: list.id) {
                         ListRow(list: list, searchQuery: searchText)
                     }
                     .listRowBackground(Color.clear)
@@ -304,8 +304,8 @@ struct HomeView: View {
         .background(Theme.ndBlack.resolve(for: colorScheme))
         .onAppear { runTitleAnimation() }
         .navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(for: String.self) { filename in
-            if let list = store.lists.first(where: { $0.filename == filename }) {
+        .navigationDestination(for: UUID.self) { id in
+            if let list = store.lists.first(where: { $0.id == id }) {
                 if streaksEnabled && list.type == .streak {
                     StreakListView(list: list)
                         .onAppear { deepLinkFocusAdd = false }
@@ -325,9 +325,9 @@ struct HomeView: View {
             }
         }
         .onChange(of: navigationTarget) { _, filename in
-            guard let filename, store.lists.contains(where: { $0.filename == filename }) else { return }
+            guard let filename, let list = store.lists.first(where: { $0.filename == filename }) else { return }
             deepLinkFocusAdd = focusAddField
-            path.append(filename)
+            path.append(list.id)
             navigationTarget = nil
             focusAddField = false
         }
