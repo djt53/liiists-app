@@ -19,6 +19,9 @@ struct LogListView: View {
     @State private var showUnpublishConfirm = false
     @State private var editingItemID: UUID?
     @State private var pendingTimestamp = Date()
+    @State private var newEntryTimestamp: Date?
+    @State private var showNewEntryDatePicker = false
+    @State private var pendingNewEntryDate = Date()
     @State private var showPublishOnboarding = false
     @State private var publishAfterOnboarding = false
     @State private var showEULA = false
@@ -159,6 +162,20 @@ struct LogListView: View {
             .presentationDetents([.fraction(0.8)])
             .presentationDragIndicator(.visible)
         }
+        .sheet(isPresented: $showNewEntryDatePicker) {
+            TimestampEditSheet(
+                timestamp: $pendingNewEntryDate,
+                onCommit: {
+                    newEntryTimestamp = roundedToMinute(pendingNewEntryDate)
+                    showNewEntryDatePicker = false
+                },
+                onCancel: {
+                    showNewEntryDatePicker = false
+                }
+            )
+            .presentationDetents([.fraction(0.8)])
+            .presentationDragIndicator(.visible)
+        }
         .sheet(isPresented: $showPublishOnboarding) {
             PublishOnboardingSheet(onFinish: {
                 socialEngaged = true
@@ -195,11 +212,18 @@ struct LogListView: View {
             store.update(newValue)
         }
         .onChange(of: isAddFieldFocused) { _, focused in
-            if !focused && !isSubmitting {
+            if !focused && !isSubmitting && !showNewEntryDatePicker {
                 if !newEntryText.trimmingCharacters(in: .whitespaces).isEmpty {
                     addEntry()
                 } else if !list.items.isEmpty {
                     isAdding = false
+                }
+            }
+        }
+        .onChange(of: showNewEntryDatePicker) { _, isShown in
+            if !isShown && isAdding {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    isAddFieldFocused = true
                 }
             }
         }
@@ -335,10 +359,27 @@ struct LogListView: View {
 
     private var addField: some View {
         HStack(spacing: Theme.spaceSM) {
-            Image(systemName: "clock")
-                .font(.system(size: 14, weight: .light))
-                .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
-                .frame(width: 24)
+            Button {
+                pendingNewEntryDate = newEntryTimestamp ?? Date()
+                showNewEntryDatePicker = true
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "clock")
+                        .font(.system(size: 14, weight: .light))
+                        .foregroundStyle(
+                            newEntryTimestamp == nil
+                                ? Theme.ndTextSecondary.resolve(for: colorScheme)
+                                : Theme.ndTextPrimary.resolve(for: colorScheme)
+                        )
+                    if let chosen = newEntryTimestamp {
+                        Text(Self.addFieldDateLabel(for: chosen))
+                            .font(Theme.bodyFont(size: 12, weight: .medium))
+                            .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
+                    }
+                }
+                .frame(minWidth: 24, alignment: .leading)
+            }
+            .buttonStyle(.plain)
             TextField("New entry\u{2026}", text: $newEntryText, axis: .vertical)
                 .font(Theme.bodyFont())
                 .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
@@ -439,23 +480,46 @@ struct LogListView: View {
     private func addEntry() {
         let trimmed = newEntryText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        let now = Date()
         // Round to the minute so the on-disk representation matches what the
         // user sees in the timestamp picker.
-        let rounded = roundedToMinute(now)
+        let rounded = roundedToMinute(newEntryTimestamp ?? Date())
         let entry = ListItem(text: trimmed, timestamp: rounded)
         isSubmitting = true
         withAnimation(Theme.nothingEasing) {
             list.items.insert(entry, at: 0)
+            list.items.sort { (a, b) in
+                (a.timestamp ?? .distantPast) > (b.timestamp ?? .distantPast)
+            }
         }
         Theme.lightHaptic()
         Analytics.logEntryAdded(entryCount: list.items.count)
         newEntryText = ""
+        newEntryTimestamp = nil
         isAdding = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
             isAddFieldFocused = true
             isSubmitting = false
         }
+    }
+
+    private static let addFieldDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = .current
+        return f
+    }()
+
+    private static func addFieldDateLabel(for ts: Date) -> String {
+        let cal = Calendar.current
+        if cal.isDateInToday(ts) { return "Today" }
+        if cal.isDateInYesterday(ts) { return "Yesterday" }
+        let now = Date()
+        let f = addFieldDateFormatter
+        if cal.component(.year, from: ts) == cal.component(.year, from: now) {
+            f.dateFormat = "MMM d"
+        } else {
+            f.dateFormat = "MMM d, ʼyy"
+        }
+        return f.string(from: ts)
     }
 
     private func deleteEntry(id: UUID) {
