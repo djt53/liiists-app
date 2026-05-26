@@ -290,6 +290,7 @@ struct HomeView: View {
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
+            .scrollDismissesKeyboard(.interactively)
             .refreshable {
                 await Task { @MainActor in
                     store.loadAll()

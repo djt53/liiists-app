@@ -449,6 +449,7 @@ struct LogListView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
+        .scrollDismissesKeyboard(.interactively)
     }
 
     private var publicChip: some View {

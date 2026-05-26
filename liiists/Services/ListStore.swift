@@ -102,6 +102,7 @@ final class ListStore: ObservableObject {
 
     func rename(_ list: inout ItemList, to newTitle: String) {
         let oldTitle = list.title
+        let oldFilename = list.filename
         let oldURL = listsDirectory.appendingPathComponent(list.filename)
         let coordinator = NSFileCoordinator()
         var error: NSError?
@@ -117,7 +118,19 @@ final class ListStore: ObservableObject {
             lists[idx] = list
         }
         lists.sort { $0.title < $1.title }
+        updateManualOrderForRename(oldFilename: oldFilename, newFilename: list.filename)
         Analytics.listRenamed(from: oldTitle, to: newTitle)
+    }
+
+    private func updateManualOrderForRename(oldFilename: String, newFilename: String) {
+        guard oldFilename != newFilename else { return }
+        let defaults = UserDefaults.standard
+        let key = "home_manual_order"
+        guard let raw = defaults.string(forKey: key), !raw.isEmpty else { return }
+        var filenames = raw.split(separator: ",").map(String.init)
+        guard let idx = filenames.firstIndex(of: oldFilename) else { return }
+        filenames[idx] = newFilename
+        defaults.set(filenames.joined(separator: ","), forKey: key)
     }
 
     func update(_ list: ItemList) {

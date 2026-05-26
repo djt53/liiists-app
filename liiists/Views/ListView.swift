@@ -206,6 +206,7 @@ struct ListView: View {
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
+            .scrollDismissesKeyboard(.interactively)
             .refreshable {
                 await Task { @MainActor in
                     let dir = SharedContainer.listsDirectory
