@@ -10,10 +10,18 @@ import Foundation
 /// EjectedAuthor mechanism (T-215). False positives are addressable by
 /// editing this file and shipping an update.
 ///
-/// Matching is case-insensitive with word boundaries so "scunthorpe" does
-/// not match "cunt". Non-ASCII whitespace and common obfuscation (zero-width
-/// joiners, asterisks between letters) are not currently handled — the
-/// expectation is that report + ejection picks up the rest.
+/// Two-pass matching, both using word boundaries so substrings inside
+/// innocuous words ("scunthorpe", "specific", "Saskatchewan") never trip:
+///   1. Raw lowercased text against the wordlist.
+///   2. Diacritic- and width-folded text against the wordlist. Catches
+///      `Fück`, `Nïgger`, full-width `ｆｕｃｋ`, etc. — the realistic
+///      Unicode obfuscation classes — without introducing substring
+///      false positives.
+///
+/// More aggressive obfuscations (leetspeak `n1gg3r`, spaced-out `f u c k`)
+/// are intentionally NOT caught here. The substring matching required to
+/// detect them produces too many false positives ("specific" contains
+/// "spic"). Those cases fall through to Report + ejection.
 enum ContentFilter {
 
     /// Returns true when the input contains no flagged terms.
@@ -22,15 +30,16 @@ enum ContentFilter {
     }
 
     /// Returns the first flagged term found, or nil if the input is clean.
-    /// Surfaced in the publish-error copy so the user understands what's
-    /// being rejected.
     static func firstMatch(_ text: String) -> String? {
-        let lowered = text.lowercased()
-        for term in flagged {
-            let pattern = "\\b\(NSRegularExpression.escapedPattern(for: term))\\b"
-            if lowered.range(of: pattern, options: .regularExpression) != nil {
-                return term
-            }
+        if let term = match(in: text.lowercased()) {
+            return term
+        }
+        let folded = text.folding(
+            options: [.diacriticInsensitive, .widthInsensitive, .caseInsensitive],
+            locale: Locale(identifier: "en_US_POSIX")
+        )
+        if folded != text.lowercased(), let term = match(in: folded) {
+            return term
         }
         return nil
     }
@@ -41,6 +50,18 @@ enum ContentFilter {
         if let m = firstMatch(title) { return m }
         for item in items {
             if let m = firstMatch(item) { return m }
+        }
+        return nil
+    }
+
+    /// Word-boundary regex pass over the wordlist. Caller is responsible
+    /// for lowercasing / folding before this point.
+    private static func match(in haystack: String) -> String? {
+        for term in flagged {
+            let pattern = "\\b\(NSRegularExpression.escapedPattern(for: term))\\b"
+            if haystack.range(of: pattern, options: .regularExpression) != nil {
+                return term
+            }
         }
         return nil
     }

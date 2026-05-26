@@ -1,6 +1,9 @@
 import Foundation
 import CloudKit
+import OSLog
 import SwiftUI
+
+private let log = Logger(subsystem: "com.davidtingle.liiists", category: "PublishStore")
 
 /// Owns all interaction with the CloudKit public database for the social
 /// Discover surface: publish/unpublish, auto-republish on local edits,
@@ -186,7 +189,7 @@ final class PublishStore: ObservableObject {
             }
             ejectedAuthorIDs = ids
         } catch {
-            print("[PublishStore] fetchEjectedAuthors failed: \(error.localizedDescription)")
+            log.error("fetchEjectedAuthors failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -225,10 +228,10 @@ final class PublishStore: ObservableObject {
     /// Publish a list to the public DB. If it's already published, performs
     /// an update instead (auto-republish — decision 006).
     func publish(_ list: ItemList) async {
-        print("[PublishStore] publish() called — signedIn=\(account.isSignedIn), filename=\(list.filename)")
+        log.debug("publish() called — signedIn=\(self.account.isSignedIn, privacy: .public)")
         guard account.isSignedIn else {
             lastError = "Sign in to publish."
-            print("[PublishStore] publish aborted — not signed in")
+            log.debug("publish aborted — not signed in")
             return
         }
 
@@ -237,7 +240,7 @@ final class PublishStore: ObservableObject {
         let itemTexts = list.items.map { $0.text }
         if let term = ContentFilter.firstMatchInList(title: list.title, items: itemTexts) {
             lastError = "This list can't be published — it contains language that violates our content policy (\"\(term)\")."
-            print("[PublishStore] publish blocked by ContentFilter, term=\(term)")
+            log.debug("publish blocked by ContentFilter")
             return
         }
 
@@ -246,14 +249,14 @@ final class PublishStore: ObservableObject {
         if let userID = account.ckUserRecordID?.recordName,
            ejectedAuthorIDs.contains(userID) {
             lastError = "Publishing is disabled for this account due to a prior content policy violation. Contact support."
-            print("[PublishStore] publish blocked — author ejected")
+            log.debug("publish blocked — author ejected")
             return
         }
 
         // Re-entrance guard — prevents tap-spam from creating duplicate CK
         // records before the first round-trip resolves.
         guard !publishingFilenames.contains(list.filename) else {
-            print("[PublishStore] publish skipped — already in flight for \(list.filename)")
+            log.debug("publish skipped — already in flight")
             return
         }
         publishingFilenames.insert(list.filename)
@@ -266,12 +269,11 @@ final class PublishStore: ObservableObject {
                 try await createPublished(list)
             }
             lastError = nil
-            print("[PublishStore] publish succeeded")
+            log.debug("publish succeeded")
         } catch {
             let nsError = error as NSError
             lastError = "\(nsError.localizedDescription) [\(nsError.domain) \(nsError.code)]"
-            print("[PublishStore] publish FAILED: \(nsError.domain) \(nsError.code) — \(nsError.localizedDescription)")
-            print("[PublishStore] userInfo: \(nsError.userInfo)")
+            log.error("publish failed: \(nsError.domain, privacy: .public) \(nsError.code, privacy: .public) — \(nsError.localizedDescription, privacy: .public)")
         }
     }
 
@@ -283,9 +285,9 @@ final class PublishStore: ObservableObject {
         let record = CKRecord(recordType: CKSchema.PublishedList.recordType)
         applyListFields(list, to: record, isUpdate: false)
 
-        print("[PublishStore] saving new PublishedList for \(list.filename) — title=\(list.title), items=\(list.items.count)")
+        log.debug("saving new PublishedList — items=\(list.items.count, privacy: .public)")
         let saved = try await publicDB.save(record)
-        print("[PublishStore] saved PublishedList recordName=\(saved.recordID.recordName)")
+        log.debug("saved PublishedList recordName=\(saved.recordID.recordName, privacy: .private)")
         publishedIndex[list.filename] = saved.recordID.recordName
         persistPublishedIndex()
     }
@@ -566,7 +568,7 @@ final class PublishStore: ObservableObject {
             // to "not over threshold" (i.e. show the list) and surface the
             // error. This errs on the side of showing content rather than
             // silently hiding it on a transient CK failure.
-            print("[PublishStore] fetchReportCounts failed: \(error.localizedDescription)")
+            log.error("fetchReportCounts failed: \(error.localizedDescription, privacy: .public)")
             return [:]
         }
     }
@@ -595,7 +597,7 @@ final class PublishStore: ObservableObject {
         } catch {
             // Don't fail the whole feed load on a counting error — just show
             // zero votes and surface the error.
-            print("[PublishStore] fetchUpvoteCounts failed: \(error.localizedDescription)")
+            log.error("fetchUpvoteCounts failed: \(error.localizedDescription, privacy: .public)")
             return [:]
         }
     }
@@ -717,7 +719,7 @@ final class PublishStore: ObservableObject {
             // The local hide already happened — surface the network error
             // but don't try to undo. Worst case we miss a global threshold
             // contribution; the user's own feed is still cleaned up.
-            print("[PublishStore] report failed: \((error as NSError).localizedDescription)")
+            log.error("report failed: \((error as NSError).localizedDescription, privacy: .public)")
         }
     }
 
