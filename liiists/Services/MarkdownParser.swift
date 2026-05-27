@@ -43,7 +43,7 @@ enum MarkdownParser {
 
     // MARK: - Parse
 
-    static func parse(content: String, filename: String) -> ItemList {
+    static func parse(content: String, filename: String, existingId: UUID? = nil) -> ItemList {
         let lines = content.components(separatedBy: .newlines)
         var index = 0
 
@@ -161,6 +161,7 @@ enum MarkdownParser {
         let title = titleFromFM ?? h1Title ?? ItemList.titleFromFilename(filename)
 
         return ItemList(
+            id: existingId ?? UUID(),
             filename: filename,
             title: title,
             type: listType,

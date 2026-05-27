@@ -47,6 +47,18 @@ final class ListStore: ObservableObject {
             return
         }
 
+        // Preserve existing ItemList UUIDs across reloads. iCloud's
+        // NSMetadataQuery fires `loadAll()` on every local write, and parsing
+        // generates fresh UUIDs by default — but NavigationStack identity is
+        // keyed on `id`, so regenerating would invalidate any active path
+        // entry (blank screen after create/rename). The rename path mutates
+        // `lists[idx]` with the new filename before this runs, so mapping by
+        // current filename carries the id forward across renames too.
+        var existingIdByFilename: [String: UUID] = [:]
+        for list in lists {
+            existingIdByFilename[list.filename] = list.id
+        }
+
         lists = files
             .filter { $0.pathExtension == "md" }
             .compactMap { url -> ItemList? in
@@ -57,7 +69,12 @@ final class ListStore: ObservableObject {
                     content = try? String(contentsOf: coordURL, encoding: .utf8)
                 }
                 guard let content else { return nil }
-                var parsed = MarkdownParser.parse(content: content, filename: url.lastPathComponent)
+                let filename = url.lastPathComponent
+                var parsed = MarkdownParser.parse(
+                    content: content,
+                    filename: filename,
+                    existingId: existingIdByFilename[filename]
+                )
                 let values = try? url.resourceValues(forKeys: [.contentModificationDateKey])
                 parsed.modifiedDate = values?.contentModificationDate
                 return parsed
