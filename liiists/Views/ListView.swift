@@ -353,6 +353,21 @@ struct ListView: View {
                 Label("Copy as Text", systemImage: "doc.on.doc")
             }
 
+            if list.type == .list || list.type == .checklist {
+                Button {
+                    let target: ItemList.ListType = list.type == .list ? .checklist : .list
+                    let oldType = list.type
+                    list.type = target
+                    Theme.lightHaptic()
+                    Analytics.listTypeConverted(from: oldType.rawValue, to: target.rawValue)
+                } label: {
+                    Label(
+                        list.type == .list ? "Convert to Checklist" : "Convert to List",
+                        systemImage: list.type == .list ? "checklist" : "list.bullet"
+                    )
+                }
+            }
+
             if showSuggestMoreEntry {
                 Divider()
 

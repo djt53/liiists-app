@@ -34,6 +34,13 @@ enum Analytics {
         PostHogSDK.shared.capture("list_renamed")
     }
 
+    static func listTypeConverted(from oldType: String, to newType: String) {
+        PostHogSDK.shared.capture("list_type_converted", properties: [
+            "from": oldType,
+            "to": newType,
+        ])
+    }
+
     // MARK: - Item Events
 
     static func itemAdded(listTitle: String, itemCount: Int) {
