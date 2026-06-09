@@ -22,6 +22,7 @@ struct ListView: View {
     @State private var showEULA = false
     @State private var showSuggestMore = false
     @State private var showSuggestMorePaywall = false
+    @State private var editMode: EditMode = .inactive
     @FocusState private var isAddFieldFocused: Bool
     @FocusState private var isSearchFocused: Bool
     @AppStorage("social_engaged") private var socialEngaged: Bool = false
@@ -58,37 +59,51 @@ struct ListView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Title + search/plus icons
+            // Title + search/plus icons (or Done while reordering)
             HStack(alignment: .top) {
                 Text(list.title)
                     .font(Theme.headingFont(size: Theme.headingSize, weight: .medium))
                     .foregroundStyle(Theme.ndTextDisplay.resolve(for: colorScheme))
                     .tracking(-0.01 * Theme.headingSize)
                 Spacer()
-                Button {
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        showSearch.toggle()
-                        if showSearch {
-                            isSearchFocused = true
-                        } else {
-                            searchText = ""
+                if editMode.isEditing {
+                    Button {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            editMode = .inactive
                         }
+                    } label: {
+                        Text("Done")
+                            .font(Theme.bodyFont(weight: .medium))
+                            .foregroundStyle(Theme.ndAccent)
+                            .frame(height: 36)
+                            .padding(.horizontal, Theme.spaceSM)
                     }
-                } label: {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 16, weight: .light))
-                        .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
-                        .frame(width: 36, height: 36)
+                } else {
+                    Button {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            showSearch.toggle()
+                            if showSearch {
+                                isSearchFocused = true
+                            } else {
+                                searchText = ""
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 16, weight: .light))
+                            .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
+                            .frame(width: 36, height: 36)
+                    }
+                    Button {
+                        startAdding()
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 16, weight: .light))
+                            .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
+                            .frame(width: 36, height: 36)
+                    }
+                    overflowMenu
                 }
-                Button {
-                    startAdding()
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 16, weight: .light))
-                        .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
-                        .frame(width: 36, height: 36)
-                }
-                overflowMenu
             }
             .padding(.horizontal, Theme.spaceMD)
             .padding(.top, Theme.spaceLG)
@@ -180,6 +195,18 @@ struct ListView: View {
                         } label: {
                             Label("Copy", systemImage: "doc.on.doc")
                         }
+                        if list.items.count > 1 {
+                            Button {
+                                withAnimation(.easeOut(duration: 0.2)) {
+                                    showSearch = false
+                                    searchText = ""
+                                    isAdding = false
+                                    editMode = .active
+                                }
+                            } label: {
+                                Label("Reorder", systemImage: "arrow.up.arrow.down")
+                            }
+                        }
                         Button(role: .destructive) {
                             if let idx = list.items.firstIndex(where: { $0.id == item.id }) {
                                 list.items.remove(at: idx)
@@ -202,6 +229,8 @@ struct ListView: View {
                 }
                 .onMove { source, destination in
                     list.items.move(fromOffsets: source, toOffset: destination)
+                    Theme.lightHaptic()
+                    Analytics.itemReordered(listTitle: list.title)
                 }
             }
             .listStyle(.plain)
@@ -223,6 +252,7 @@ struct ListView: View {
             }
         }
         .background(Theme.ndBlack.resolve(for: colorScheme))
+        .environment(\.editMode, $editMode)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
         .toolbar {
