@@ -18,6 +18,36 @@ enum Analytics {
         PostHogSDK.shared.setup(config)
     }
 
+    // MARK: - Identity
+
+    /// Attaches person properties (build_type, sign-in state, paid state).
+    /// Pass `userID` to bind the anonymous distinct_id to a stable Apple-issued
+    /// ID once SIWA completes — required for slicing reports by paid/free or
+    /// excluding internal devices.
+    static func identify(userID: String?, isSignedIn: Bool, isPro: Bool) {
+        let props: [String: Any] = [
+            "build_type": buildType(),
+            "account_signed_in": isSignedIn,
+            "paid": isPro,
+        ]
+        if let userID, !userID.isEmpty {
+            PostHogSDK.shared.identify(userID, userProperties: props)
+        } else {
+            PostHogSDK.shared.capture("$set", properties: ["$set": props])
+        }
+    }
+
+    private static func buildType() -> String {
+        #if DEBUG
+        return "debug"
+        #else
+        if Bundle.main.appStoreReceiptURL?.lastPathComponent == "sandboxReceipt" {
+            return "testflight"
+        }
+        return "release"
+        #endif
+    }
+
     // MARK: - List Events
 
     static func listCreated(title: String, type: String) {

@@ -52,6 +52,11 @@ final class AccountStore: NSObject, ObservableObject {
         return false
     }
 
+    var appleUserID: String? {
+        if case .signedIn(let userID) = state { return userID }
+        return nil
+    }
+
     /// Call on app launch. Verifies any persisted Apple credential is still valid
     /// and bootstraps the CloudKit user record ID.
     func refreshCredentialState() async {

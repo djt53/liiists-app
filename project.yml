@@ -97,6 +97,10 @@ targets:
         group: Shared
       - path: liiists/Services/SharedContainer.swift
         group: Shared
+      - path: liiists/Services/Analytics.swift
+        group: Shared
+    dependencies:
+      - package: PostHog
     entitlements:
       path: ShareExtension/ShareExtension.entitlements
       properties:

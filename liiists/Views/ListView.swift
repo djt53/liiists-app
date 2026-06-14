@@ -184,6 +184,7 @@ struct ListView: View {
                 ForEach(searchText.isEmpty ? $list.items : .constant(filteredItems)) { $item in
                     ItemRow(item: $item, listType: list.type) {
                         Theme.lightHaptic()
+                        Analytics.itemChecked(listTitle: list.title, checked: item.isChecked)
                     }
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
@@ -210,6 +211,7 @@ struct ListView: View {
                         Button(role: .destructive) {
                             if let idx = list.items.firstIndex(where: { $0.id == item.id }) {
                                 list.items.remove(at: idx)
+                                Analytics.itemDeleted(listTitle: list.title)
                                 Theme.lightHaptic()
                             }
                         } label: {
@@ -220,6 +222,7 @@ struct ListView: View {
                         Button(role: .destructive) {
                             if let idx = list.items.firstIndex(where: { $0.id == item.id }) {
                                 list.items.remove(at: idx)
+                                Analytics.itemDeleted(listTitle: list.title)
                                 Theme.lightHaptic()
                             }
                         } label: {
@@ -504,6 +507,7 @@ struct ListView: View {
         for entry in entries.reversed() {
             list.items.insert(ListItem(text: entry), at: 0)
         }
+        Analytics.itemAdded(listTitle: list.title, itemCount: list.items.count)
         Theme.lightHaptic()
         newItemText = ""
         isAdding = true

@@ -11,6 +11,8 @@ class ShareViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
 
+        Analytics.setup()
+
         view.backgroundColor = .systemBackground
         title = "Add to List"
 
@@ -95,6 +97,8 @@ class ShareViewController: UIViewController {
         coordinator.coordinate(writingItemAt: url, options: .forReplacing, error: &error) { coordURL in
             try? content.write(to: coordURL, atomically: true, encoding: .utf8)
         }
+        let contentType = text.hasPrefix("http://") || text.hasPrefix("https://") ? "url" : "text"
+        Analytics.shareExtensionUsed(listTitle: list.title, contentType: contentType)
         done()
     }
 

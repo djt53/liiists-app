@@ -13,6 +13,7 @@ struct liiistsApp: App {
 
     init() {
         Analytics.setup()
+        Analytics.identify(userID: nil, isSignedIn: false, isPro: false)
         let account = AccountStore()
         _account = StateObject(wrappedValue: account)
         _publish = StateObject(wrappedValue: PublishStore(account: account))
@@ -30,11 +31,18 @@ struct liiistsApp: App {
                 .tint(Theme.ndAccent)
                 .task {
                     await account.refreshCredentialState()
+                    Analytics.identify(userID: account.appleUserID, isSignedIn: account.isSignedIn, isPro: paywall.isPro)
                     store.republishHook = { [weak publish] list in
                         publish?.republishIfNeeded(list)
                     }
                     // Pull moderator's ejection list — guideline 1.2.
                     await publish.fetchEjectedAuthors()
+                }
+                .onChange(of: account.state) { _, _ in
+                    Analytics.identify(userID: account.appleUserID, isSignedIn: account.isSignedIn, isPro: paywall.isPro)
+                }
+                .onChange(of: paywall.isPro) { _, _ in
+                    Analytics.identify(userID: account.appleUserID, isSignedIn: account.isSignedIn, isPro: paywall.isPro)
                 }
                 .onOpenURL { url in
                     handleDeepLink(url)
