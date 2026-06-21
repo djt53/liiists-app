@@ -74,8 +74,10 @@ extension WatchPhoneClient: WCSessionDelegate {
         error: Error?
     ) {
         Task { @MainActor in
-            // On initial activation, refresh from whatever's in the App Group
-            // (the iPhone may have written it before this session existed).
+            // On activation, hydrate from the last applicationContext if
+            // one was already delivered. The system replays the most
+            // recent context to the freshly-activated session.
+            self.applyContext(session.receivedApplicationContext)
             WatchCatalogStore.shared.reload()
         }
     }
@@ -86,26 +88,26 @@ extension WatchPhoneClient: WCSessionDelegate {
         }
     }
 
-    nonisolated func session(
-        _ session: WCSession,
-        didReceiveMessage message: [String: Any],
-        replyHandler: @escaping ([String: Any]) -> Void
-    ) {
+    nonisolated func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String : Any]) {
         Task { @MainActor in
-            if (message["kind"] as? String) == "catalogUpdated" {
-                WatchCatalogStore.shared.reload()
-                WidgetCenter.shared.reloadAllTimelines()
-            }
-            replyHandler(["ok": true])
+            self.applyContext(applicationContext)
         }
     }
+}
 
-    nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
-        Task { @MainActor in
-            if (message["kind"] as? String) == "catalogUpdated" {
-                WatchCatalogStore.shared.reload()
-                WidgetCenter.shared.reloadAllTimelines()
-            }
+@MainActor
+private extension WatchPhoneClient {
+    func applyContext(_ context: [String: Any]) {
+        guard (context["kind"] as? String) == "catalogSnapshot",
+              let payload = context["payload"] as? Data,
+              let entries = try? JSONDecoder().decode([WatchCatalogEntry].self, from: payload) else {
+            return
         }
+        WatchCatalog.writeCatalog(entries)
+        if let pinned = context["pinned"] as? String, !pinned.isEmpty {
+            WatchCatalog.pinnedFilename = pinned
+        }
+        WatchCatalogStore.shared.reload()
+        WidgetCenter.shared.reloadAllTimelines()
     }
 }

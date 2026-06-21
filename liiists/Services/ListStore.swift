@@ -82,7 +82,7 @@ final class ListStore: ObservableObject {
             .sorted { ($0.title) < ($1.title) }
 
         isLoaded = true
-        syncWatchCatalog(notify: false)
+        syncWatchCatalog()
     }
 
     func create(
@@ -243,11 +243,12 @@ final class ListStore: ObservableObject {
 
     // MARK: - Watch catalog
 
-    /// Projects `lists` into a lightweight catalog and publishes it to the
-    /// App Group for the watch + complications to read. Call after every
-    /// mutation site. `notify: false` skips the WC wake-up nudge (used on
-    /// the initial load path so we don't ping the watch unnecessarily).
-    private func syncWatchCatalog(notify: Bool = true) {
+    /// Projects `lists` into a lightweight catalog, writes it to the
+    /// iPhone-local App Group, AND ships the same payload to the watch
+    /// via WCSession.updateApplicationContext. App Groups don't span
+    /// iPhone↔Watch, so the WC trip is what actually makes the catalog
+    /// visible on the wrist.
+    private func syncWatchCatalog() {
         let entries = lists
             .sorted { ($0.modifiedDate ?? .distantPast) > ($1.modifiedDate ?? .distantPast) }
             .prefix(WatchCatalog.maxEntries)
@@ -271,8 +272,6 @@ final class ListStore: ObservableObject {
                 )
             }
         WatchCatalog.writeCatalog(Array(entries))
-        if notify {
-            WatchSyncService.shared.notifyCatalogUpdated()
-        }
+        WatchSyncService.shared.notifyCatalogUpdated()
     }
 }

@@ -20,20 +20,45 @@ final class WatchSyncService: NSObject, ObservableObject {
         session.activate()
     }
 
-    /// Pushes a lightweight nudge to the watch so it can reload complications
-    /// after the iPhone has updated the App Group catalog. The catalog itself
-    /// is the contract — the message is just a wake-up signal.
+    /// Pushes the current catalog data to the watch via
+    /// `updateApplicationContext`. This is the textbook pattern for
+    /// "latest snapshot from iPhone to Watch" — WC delivers it
+    /// opportunistically next time the watch wakes, replacing any prior
+    /// context. App Groups don't span iPhone↔Watch, so the catalog must
+    /// physically travel the wire; writing it to the iPhone's local
+    /// App Group is a no-op as far as the watch is concerned.
     func notifyCatalogUpdated() {
         let session = WCSession.default
-        guard session.activationState == .activated, session.isReachable else { return }
-        session.sendMessage([Message.kind: Message.catalogUpdated], replyHandler: nil) { _ in
-            // Silent — the App Group write is the durable contract.
+        guard session.activationState == .activated else { return }
+
+        // Read the catalog the iPhone just wrote to its local App Group
+        // and re-encode for transport. (Source of truth is in memory in
+        // ListStore but we already do the projection in the sync helper.)
+        let entries = WatchCatalog.read()
+        guard let payload = try? JSONEncoder().encode(entries) else { return }
+
+        let context: [String: Any] = [
+            Message.kind: Message.catalogSnapshot,
+            Message.payload: payload,
+            Message.pinned: WatchCatalog.pinnedFilename ?? "",
+            Message.revision: ISO8601DateFormatter().string(from: Date()),
+        ]
+
+        do {
+            try session.updateApplicationContext(context)
+        } catch {
+            // applicationContext throws when the new payload is identical
+            // to the last one or exceeds ~65KB. Both are recoverable —
+            // the watch will get the next update.
         }
     }
 
-    private enum Message {
+    enum Message {
         static let kind = "kind"
-        static let catalogUpdated = "catalogUpdated"
+        static let catalogSnapshot = "catalogSnapshot"
+        static let payload = "payload"
+        static let pinned = "pinned"
+        static let revision = "revision"
     }
 }
 
