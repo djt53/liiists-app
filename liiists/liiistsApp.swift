@@ -35,6 +35,7 @@ struct liiistsApp: App {
                     store.republishHook = { [weak publish] list in
                         publish?.republishIfNeeded(list)
                     }
+                    WatchSyncService.shared.activate(listStore: store)
                     // Pull moderator's ejection list — guideline 1.2.
                     await publish.fetchEjectedAuthors()
                 }

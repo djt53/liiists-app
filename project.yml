@@ -3,6 +3,7 @@ options:
   bundleIdPrefix: com.davidtingle
   deploymentTarget:
     iOS: "17.0"
+    watchOS: "10.0"
   xcodeVersion: "16.0"
   generateEmptyDirectories: true
 
@@ -58,6 +59,8 @@ targets:
     dependencies:
       - target: ShareExtension
       - target: LiiistsWidget
+      - target: liiistsWatch
+        embed: true
       - package: PostHog
     entitlements:
       path: liiists/liiists.entitlements
@@ -168,6 +171,42 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         PRODUCT_BUNDLE_IDENTIFIER: com.davidtingle.liiists.LiiistsWidget
         SKIP_INSTALL: YES
+
+  liiistsWatch:
+    type: application
+    platform: watchOS
+    sources:
+      - liiistsWatch
+      - path: liiists/Services/WatchPayload.swift
+        group: Shared
+    info:
+      path: liiistsWatch/Info.plist
+      properties:
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleDisplayName: liiists
+        WKApplication: true
+        WKCompanionAppBundleIdentifier: com.davidtingle.liiists
+        UIAppFonts:
+          - Doto-Variable.ttf
+          - SpaceGrotesk-Variable.ttf
+          - SpaceMono-Regular.ttf
+          - SpaceMono-Bold.ttf
+    resources:
+      - path: liiists/Resources/Fonts/Doto-Variable.ttf
+      - path: liiists/Resources/Fonts/SpaceGrotesk-Variable.ttf
+      - path: liiists/Resources/Fonts/SpaceMono-Regular.ttf
+      - path: liiists/Resources/Fonts/SpaceMono-Bold.ttf
+    entitlements:
+      path: liiistsWatch/liiistsWatch.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.davidtingle.liiists
+    settings:
+      base:
+        TARGETED_DEVICE_FAMILY: "4"
+        PRODUCT_BUNDLE_IDENTIFIER: com.davidtingle.liiists.watchkitapp
+        ENABLE_PREVIEWS: YES
 
   liiistsTests:
     type: bundle.unit-test
