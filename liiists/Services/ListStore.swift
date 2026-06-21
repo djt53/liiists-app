@@ -82,6 +82,7 @@ final class ListStore: ObservableObject {
             .sorted { ($0.title) < ($1.title) }
 
         isLoaded = true
+        syncWatchCatalog(notify: false)
     }
 
     func create(
@@ -101,6 +102,7 @@ final class ListStore: ObservableObject {
         save(list)
         lists.append(list)
         lists.sort { $0.title < $1.title }
+        syncWatchCatalog()
         Analytics.listCreated(title: title, type: type.rawValue)
         return list
     }
@@ -136,6 +138,7 @@ final class ListStore: ObservableObject {
         }
         lists.sort { $0.title < $1.title }
         updateManualOrderForRename(oldFilename: oldFilename, newFilename: list.filename)
+        syncWatchCatalog()
         Analytics.listRenamed(from: oldTitle, to: newTitle)
     }
 
@@ -155,6 +158,7 @@ final class ListStore: ObservableObject {
         if let idx = lists.firstIndex(where: { $0.id == list.id }) {
             lists[idx] = list
         }
+        syncWatchCatalog()
     }
 
     func delete(_ list: ItemList) {
@@ -165,6 +169,7 @@ final class ListStore: ObservableObject {
             try? fileManager.removeItem(at: coordURL)
         }
         lists.removeAll { $0.id == list.id }
+        syncWatchCatalog()
         Analytics.listDeleted(title: list.title)
     }
 
@@ -234,5 +239,40 @@ final class ListStore: ObservableObject {
             startMonitoring()
         }
         loadAll()
+    }
+
+    // MARK: - Watch catalog
+
+    /// Projects `lists` into a lightweight catalog and publishes it to the
+    /// App Group for the watch + complications to read. Call after every
+    /// mutation site. `notify: false` skips the WC wake-up nudge (used on
+    /// the initial load path so we don't ping the watch unnecessarily).
+    private func syncWatchCatalog(notify: Bool = true) {
+        let entries = lists
+            .sorted { ($0.modifiedDate ?? .distantPast) > ($1.modifiedDate ?? .distantPast) }
+            .prefix(WatchCatalog.maxEntries)
+            .map { list -> WatchCatalogEntry in
+                let items = list.items.prefix(WatchCatalog.maxItemsPerEntry).map {
+                    WatchCatalogItem(
+                        id: $0.id,
+                        text: $0.text,
+                        isChecked: $0.isChecked,
+                        timestamp: $0.timestamp
+                    )
+                }
+                return WatchCatalogEntry(
+                    filename: list.filename,
+                    title: list.title,
+                    type: list.type.rawValue,
+                    itemCount: list.itemCount,
+                    checkedCount: list.checkedCount,
+                    items: Array(items),
+                    modifiedDate: list.modifiedDate
+                )
+            }
+        WatchCatalog.writeCatalog(Array(entries))
+        if notify {
+            WatchSyncService.shared.notifyCatalogUpdated()
+        }
     }
 }

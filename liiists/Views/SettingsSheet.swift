@@ -9,9 +9,12 @@ import SwiftUI
 /// reactivating monetization.
 struct SettingsSheet: View {
     @ObservedObject var paywall: Paywall
+    @ObservedObject var listStore: ListStore
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismiss
     @State private var showPaywall = false
+    @State private var showWatchPicker = false
+    @State private var pinnedFilename: String? = WatchCatalog.pinnedFilename
 
     private let paywallEnabled = false
 
@@ -115,6 +118,13 @@ struct SettingsSheet: View {
                         UIApplication.shared.open(url)
                     }
                 }
+
+                Divider()
+                    .background(Theme.ndBorder.resolve(for: colorScheme))
+
+                settingsRow(label: "Watch complication", trailing: pinnedTrailing) {
+                    showWatchPicker = true
+                }
             }
             .padding(.horizontal, Theme.spaceLG)
 
@@ -142,15 +152,37 @@ struct SettingsSheet: View {
         .sheet(isPresented: $showPaywall) {
             PaywallSheet(paywall: paywall, reason: "settings_upgrade")
         }
+        .sheet(isPresented: $showWatchPicker) {
+            WatchComplicationPicker(
+                lists: listStore.lists,
+                selected: pinnedFilename
+            ) { newFilename in
+                WatchCatalog.pinnedFilename = newFilename
+                pinnedFilename = newFilename
+                WatchSyncService.shared.notifyCatalogUpdated()
+            }
+        }
     }
 
-    private func settingsRow(label: String, action: @escaping () -> Void) -> some View {
+    private var pinnedTrailing: String? {
+        guard let pinnedFilename else { return "Not set" }
+        return listStore.lists.first(where: { $0.filename == pinnedFilename })?.title ?? "Not set"
+    }
+
+    private func settingsRow(label: String, trailing: String? = nil, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack {
                 Text(label)
                     .font(Theme.bodyFont(size: 16))
                     .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
                 Spacer()
+                if let trailing {
+                    Text(trailing)
+                        .font(Theme.bodyFont(size: 14))
+                        .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
+                        .lineLimit(1)
+                        .padding(.trailing, Theme.spaceXS)
+                }
                 Image(systemName: "chevron.right")
                     .font(.system(size: 12, weight: .light))
                     .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
@@ -158,5 +190,73 @@ struct SettingsSheet: View {
             .frame(height: 56)
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// Sheet that lists all available lists and lets the user pick which one
+/// the pinned-list watch complication shows. "Not set" clears the pin.
+private struct WatchComplicationPicker: View {
+    let lists: [ItemList]
+    let selected: String?
+    let onPick: (String?) -> Void
+
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Button {
+                        onPick(nil)
+                        dismiss()
+                    } label: {
+                        HStack {
+                            Text("Not set")
+                                .font(Theme.bodyFont(size: 16))
+                                .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
+                            Spacer()
+                            if selected == nil {
+                                Image(systemName: "checkmark")
+                                    .foregroundStyle(Theme.ndAccent)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Section {
+                    ForEach(lists, id: \.filename) { list in
+                        Button {
+                            onPick(list.filename)
+                            dismiss()
+                        } label: {
+                            HStack {
+                                Text(list.title)
+                                    .font(Theme.bodyFont(size: 16))
+                                    .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
+                                Spacer()
+                                if selected == list.filename {
+                                    Image(systemName: "checkmark")
+                                        .foregroundStyle(Theme.ndAccent)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                } header: {
+                    Text("YOUR LISTS")
+                        .font(Theme.labelFont(size: 11))
+                        .tracking(1.2)
+                        .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
+                }
+            }
+            .navigationTitle("Watch Complication")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
     }
 }

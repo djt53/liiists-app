@@ -158,7 +158,7 @@ struct HomeView: View {
                 PaywallSheet(paywall: paywall, reason: "list_cap_reached")
             }
             .sheet(isPresented: $showSettings) {
-                SettingsSheet(paywall: paywall)
+                SettingsSheet(paywall: paywall, listStore: store)
             }
             .sheet(isPresented: $showNewList) {
                 NewListSheet(

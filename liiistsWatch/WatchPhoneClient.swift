@@ -1,5 +1,6 @@
 import Foundation
 import WatchConnectivity
+import WidgetKit
 
 /// WatchConnectivity client on the watch side. Sends payloads to the iPhone
 /// for the actual markdown write. Falls back to `transferUserInfo` when the
@@ -71,11 +72,40 @@ extension WatchPhoneClient: WCSessionDelegate {
         _ session: WCSession,
         activationDidCompleteWith activationState: WCSessionActivationState,
         error: Error?
-    ) {}
+    ) {
+        Task { @MainActor in
+            // On initial activation, refresh from whatever's in the App Group
+            // (the iPhone may have written it before this session existed).
+            WatchCatalogStore.shared.reload()
+        }
+    }
 
     nonisolated func session(_ session: WCSession, didFinish userInfoTransfer: WCSessionUserInfoTransfer, error: Error?) {
         Task { @MainActor in
             if self.pendingCount > 0 { self.pendingCount -= 1 }
+        }
+    }
+
+    nonisolated func session(
+        _ session: WCSession,
+        didReceiveMessage message: [String: Any],
+        replyHandler: @escaping ([String: Any]) -> Void
+    ) {
+        Task { @MainActor in
+            if (message["kind"] as? String) == "catalogUpdated" {
+                WatchCatalogStore.shared.reload()
+                WidgetCenter.shared.reloadAllTimelines()
+            }
+            replyHandler(["ok": true])
+        }
+    }
+
+    nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
+        Task { @MainActor in
+            if (message["kind"] as? String) == "catalogUpdated" {
+                WatchCatalogStore.shared.reload()
+                WidgetCenter.shared.reloadAllTimelines()
+            }
         }
     }
 }

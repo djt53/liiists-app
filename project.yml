@@ -145,8 +145,7 @@ targets:
         group: Shared
       - path: liiists/Services/StreakStats.swift
         group: Shared
-      - path: liiists/Theme.swift
-        group: Shared
+      - liiists/Theme.swift
     resources:
       - path: liiists/Resources/Fonts/SpaceGrotesk-Variable.ttf
       - path: liiists/Resources/Fonts/SpaceMono-Regular.ttf
@@ -175,10 +174,18 @@ targets:
   liiistsWatch:
     type: application
     platform: watchOS
+    dependencies:
+      - target: liiistsWatchWidgets
+        embed: true
     sources:
       - liiistsWatch
       - path: liiists/Services/WatchPayload.swift
         group: Shared
+      - path: liiists/Services/WatchCatalog.swift
+        group: Shared
+      - liiists/Theme.swift
+    resources:
+      - liiistsWatch/Assets.xcassets
     info:
       path: liiistsWatch/Info.plist
       properties:
@@ -206,7 +213,39 @@ targets:
       base:
         TARGETED_DEVICE_FAMILY: "4"
         PRODUCT_BUNDLE_IDENTIFIER: com.davidtingle.liiists.watchkitapp
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ENABLE_PREVIEWS: YES
+
+  liiistsWatchWidgets:
+    type: app-extension
+    platform: watchOS
+    sources:
+      - liiistsWatchWidgets
+      - path: liiists/Services/WatchCatalog.swift
+        group: Shared
+      - liiists/Theme.swift
+    resources:
+      - path: liiists/Resources/Fonts/SpaceGrotesk-Variable.ttf
+      - path: liiists/Resources/Fonts/SpaceMono-Regular.ttf
+      - path: liiists/Resources/Fonts/SpaceMono-Bold.ttf
+    entitlements:
+      path: liiistsWatchWidgets/liiistsWatchWidgets.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.davidtingle.liiists
+    info:
+      path: liiistsWatchWidgets/Info.plist
+      properties:
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleDisplayName: liiists Watch Widgets
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        TARGETED_DEVICE_FAMILY: "4"
+        PRODUCT_BUNDLE_IDENTIFIER: com.davidtingle.liiists.watchkitapp.widgets
+        SKIP_INSTALL: YES
 
   liiistsTests:
     type: bundle.unit-test
