@@ -15,10 +15,20 @@ enum SharedContainer {
     }
 
     /// The shared lists directory — prefers iCloud, falls back to App Group, then Documents.
+    /// Reads `iCloudDocumentsDirectory`, which Apple documents as unsafe on the main
+    /// thread; callers on the main actor should resolve this from a detached task and
+    /// cache the result.
     static var listsDirectory: URL {
         if let iCloud = iCloudDocumentsDirectory {
             return iCloud
         }
+        return fallbackDirectory
+    }
+
+    /// Synchronous, never blocks — skips the iCloud ubiquity-container lookup.
+    /// Use as the cold-start placeholder while the real `listsDirectory` is being
+    /// resolved off the main thread.
+    static var fallbackDirectory: URL {
         if let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID) {
             return container.appendingPathComponent("liiists", isDirectory: true)
         }

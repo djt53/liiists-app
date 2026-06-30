@@ -1,6 +1,9 @@
 import Foundation
+import os.log
 import SwiftUI
 import WidgetKit
+
+private let coldOpenLog = Logger(subsystem: "com.davidtingle.liiists", category: "cold_open")
 
 /// Manages reading and writing ItemList markdown files from a directory.
 /// Monitors iCloud Drive for changes from other devices or Files.app.
@@ -20,12 +23,39 @@ final class ListStore: ObservableObject {
     private var identityObserver: NSObjectProtocol?
 
     init() {
-        self.listsDirectory = SharedContainer.listsDirectory
-        SharedContainer.migrateIfNeeded()
-        SharedContainer.migrateToiCloudIfNeeded()
+        // Cold-open hot path: do *no* blocking work here. The real
+        // `listsDirectory` resolution calls `url(forUbiquityContainerIdentifier:)`
+        // which Apple explicitly warns must not run on the main thread —
+        // first launches and weak-network conditions can stall it for seconds,
+        // freezing the launch screen. Seed with the App Group fallback so
+        // SwiftUI can render the first frame (HomeView's ProgressView),
+        // then resolve the real directory in `bootstrap()` below.
+        self.listsDirectory = SharedContainer.fallbackDirectory
+        Task { [weak self] in
+            await self?.bootstrap()
+        }
+    }
+
+    /// Resolves the real lists directory off the main thread, runs migrations,
+    /// then hops back to the main actor to swap state, load lists, and start
+    /// the iCloud metadata query. Invoked from `init()` and from
+    /// `handleiCloudIdentityChange()` when the user signs in/out of iCloud.
+    private func bootstrap() async {
+        let started = Date()
+        let resolvedDir = await Task.detached(priority: .userInitiated) {
+            SharedContainer.migrateIfNeeded()
+            SharedContainer.migrateToiCloudIfNeeded()
+            return SharedContainer.listsDirectory
+        }.value
+        let bootstrapMs = Int(Date().timeIntervalSince(started) * 1000)
+
+        self.listsDirectory = resolvedDir
         SharedContainer.ensureDirectory()
+        let loadStart = Date()
         loadAll()
+        let loadMs = Int(Date().timeIntervalSince(loadStart) * 1000)
         startMonitoring()
+        coldOpenLog.info("bootstrap \(bootstrapMs, privacy: .public)ms, loadAll \(loadMs, privacy: .public)ms")
     }
 
     deinit {
@@ -232,13 +262,11 @@ final class ListStore: ObservableObject {
     }
 
     private func handleiCloudIdentityChange() {
-        self.listsDirectory = SharedContainer.listsDirectory
-        SharedContainer.ensureDirectory()
         metadataQuery?.stop()
-        if SharedContainer.isiCloudAvailable {
-            startMonitoring()
+        metadataQuery = nil
+        Task { [weak self] in
+            await self?.bootstrap()
         }
-        loadAll()
     }
 
     // MARK: - Watch catalog
