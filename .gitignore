@@ -24,3 +24,4 @@ mcp/node_modules/
 # Go
 cli/liiists
 cli/cli
+scripts/__pycache__/
