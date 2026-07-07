@@ -140,15 +140,10 @@ struct LogStreakIntent: AppIntent {
             throw IntentError.listNotFound(listName)
         }
 
-        let alreadyLogged = list.isStreakDayLogged(Date())
-        if !alreadyLogged {
-            list.toggleStreakDay(Date())
-            store.save(list)
-        }
+        list.addStreakEntry(Date())
+        store.save(list)
 
-        return .result(value: alreadyLogged
-            ? "Already logged \(list.title) today"
-            : "Logged \(list.title)")
+        return .result(value: "Logged \(list.title)")
     }
 
     static var parameterSummary: some ParameterSummary {

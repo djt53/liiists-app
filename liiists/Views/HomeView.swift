@@ -45,16 +45,9 @@ struct HomeView: View {
     @State private var showNewList = false
     @State private var showPaywall = false
 
-    /// Streaks are hidden in v1.0. When `false`, any pre-existing
-    /// `.streak` list opens in `ListView` (will appear empty since
-    /// streak lists store dates, not items — markdown data on disk is
-    /// preserved). Flip back to `true` to restore the dedicated
-    /// `StreakListView` rendering. See log.md session 10.
-    private let streaksEnabled = false
     @State private var showSettings = false
     @State private var newListTitle = ""
     @State private var newListType: ItemList.ListType = .list
-    @State private var newListCadence: StreakCadence = .daily
     @State private var searchText = ""
     @State private var showSearch = false
     @State private var animatingCharIndex: Int? = nil
@@ -164,19 +157,16 @@ struct HomeView: View {
                 NewListSheet(
                     title: $newListTitle,
                     listType: $newListType,
-                    cadence: $newListCadence,
                     onCreate: {
                         let trimmed = newListTitle.trimmingCharacters(in: .whitespaces)
                         guard !trimmed.isEmpty else { return }
                         let newList = store.create(
                             title: trimmed,
-                            type: newListType,
-                            cadence: newListType == .streak ? newListCadence : nil
+                            type: newListType
                         )
                         Theme.mediumHaptic()
                         newListTitle = ""
                         newListType = .list
-                        newListCadence = .daily
                         showNewList = false
                         // Navigate to the new list. Streak lists don't need
                         // the add field — they show the first circle ready to tap.
@@ -307,7 +297,7 @@ struct HomeView: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(for: UUID.self) { id in
             if let list = store.lists.first(where: { $0.id == id }) {
-                if streaksEnabled && list.type == .streak {
+                if list.type == .streak {
                     StreakListView(list: list)
                         .onAppear { deepLinkFocusAdd = false }
                 } else if list.type == .log {
@@ -451,7 +441,7 @@ struct ListRow: View {
         }
         switch list.type {
         case .streak:
-            return list.streakCadence?.displayLabel.lowercased()
+            return list.streakEntries.isEmpty ? nil : "\(list.streakEntries.count)"
         case .checklist:
             return list.itemCount > 0 ? "\(list.checkedCount)/\(list.itemCount)" : nil
         case .list:
@@ -494,18 +484,10 @@ struct ListRow: View {
 struct NewListSheet: View {
     @Binding var title: String
     @Binding var listType: ItemList.ListType
-    @Binding var cadence: StreakCadence
     var onCreate: () -> Void
     var onCancel: () -> Void
     @Environment(\.colorScheme) private var colorScheme
     @FocusState private var isFocused: Bool
-
-    /// Streaks are hidden in v1.0. Flip back to `true` to reactivate the
-    /// new-list segment button and the cadence picker. Underlying
-    /// `ListType.streak`, `StreakCadence`, `StreakListView`, `StreakStats`,
-    /// and `StreakWidget` infrastructure stays in place; the streak case
-    /// just isn't user-creatable. See log.md session 10.
-    private let streaksEnabled = false
 
     private var isValid: Bool {
         !title.trimmingCharacters(in: .whitespaces).isEmpty
@@ -590,9 +572,7 @@ struct NewListSheet: View {
                     segmentButton(label: "LIST", icon: "list.bullet", type: .list)
                     segmentButton(label: "CHECKLIST", icon: "checklist", type: .checklist)
                     segmentButton(label: "LOG", icon: "clock", type: .log)
-                    if streaksEnabled {
-                        segmentButton(label: "STREAK", icon: "flame", type: .streak)
-                    }
+                    segmentButton(label: "STREAK", icon: "flame", type: .streak)
                 }
                 .background(
                     RoundedRectangle(cornerRadius: Theme.cornerRadius)
@@ -602,59 +582,10 @@ struct NewListSheet: View {
             }
             .padding(.horizontal, Theme.spaceMD)
 
-            // Cadence picker — only when STREAK is selected
-            if listType == .streak {
-                Spacer().frame(height: Theme.spaceLG)
-
-                VStack(alignment: .leading, spacing: Theme.spaceSM) {
-                    Text("CADENCE")
-                        .nothingLabel(color: Theme.ndTextSecondary.resolve(for: colorScheme))
-
-                    HStack(spacing: 0) {
-                        cadenceButton(label: "DAILY", value: .daily)
-                        cadenceButton(label: "WEEKDAYS", value: .weekdays)
-                        cadenceButton(label: "3/WEEK", value: .threePerWeek)
-                    }
-                    .background(
-                        RoundedRectangle(cornerRadius: Theme.cornerRadius)
-                            .strokeBorder(Theme.ndBorderVisible.resolve(for: colorScheme), lineWidth: 1)
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.cornerRadius))
-                }
-                .padding(.horizontal, Theme.spaceMD)
-                .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-
             Spacer()
         }
         .background(Theme.ndSurface.resolve(for: colorScheme))
         .onAppear { isFocused = true }
-    }
-
-    private func cadenceButton(label: String, value: StreakCadence) -> some View {
-        let isActive = cadence == value
-        return Button {
-            withAnimation(.easeOut(duration: Theme.microDuration)) {
-                cadence = value
-            }
-        } label: {
-            Text(label)
-                .font(Theme.labelFont(size: Theme.labelSize))
-                .tracking(Theme.labelSize * 0.06)
-                .frame(maxWidth: .infinity)
-                .frame(height: 40)
-                .foregroundStyle(
-                    isActive
-                        ? Theme.ndBlack.resolve(for: colorScheme)
-                        : Theme.ndTextSecondary.resolve(for: colorScheme)
-                )
-                .background(
-                    isActive
-                        ? Theme.ndTextDisplay.resolve(for: colorScheme)
-                        : .clear
-                )
-        }
-        .buttonStyle(.plain)
     }
 
     private func segmentButton(label: String, icon: String, type: ItemList.ListType) -> some View {
@@ -664,13 +595,16 @@ struct NewListSheet: View {
                 listType = type
             }
         } label: {
-            HStack(spacing: Theme.spaceXS) {
+            HStack(spacing: Theme.space2XS) {
                 Image(systemName: icon)
-                    .font(.system(size: 14, weight: .light))
+                    .font(.system(size: 13, weight: .light))
                 Text(label)
                     .font(Theme.labelFont(size: Theme.labelSize))
-                    .tracking(Theme.labelSize * 0.06)
+                    .tracking(Theme.labelSize * 0.04)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
             }
+            .padding(.horizontal, 2)
             .frame(maxWidth: .infinity)
             .frame(height: 40)
             .foregroundStyle(

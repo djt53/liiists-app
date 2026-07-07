@@ -17,9 +17,8 @@ struct StreakWidgetIntent: WidgetConfigurationIntent {
 struct StreakWidgetEntry: TimelineEntry {
     let date: Date
     let listTitle: String
-    let cadenceLabel: String
     let loggedToday: Bool
-    let currentStreak: Int
+    let totalCount: Int
     let filename: String
 }
 
@@ -30,9 +29,8 @@ struct StreakWidgetProvider: AppIntentTimelineProvider {
         StreakWidgetEntry(
             date: .now,
             listTitle: "Workouts",
-            cadenceLabel: "Daily",
             loggedToday: false,
-            currentStreak: 5,
+            totalCount: 12,
             filename: ""
         )
     }
@@ -54,9 +52,8 @@ struct StreakWidgetProvider: AppIntentTimelineProvider {
             return StreakWidgetEntry(
                 date: .now,
                 listTitle: "No list selected",
-                cadenceLabel: "",
                 loggedToday: false,
-                currentStreak: 0,
+                totalCount: 0,
                 filename: ""
             )
         }
@@ -66,22 +63,17 @@ struct StreakWidgetProvider: AppIntentTimelineProvider {
             return StreakWidgetEntry(
                 date: .now,
                 listTitle: entity.title,
-                cadenceLabel: "",
                 loggedToday: false,
-                currentStreak: 0,
+                totalCount: 0,
                 filename: entity.id
             )
         }
 
-        let cadence = list.streakCadence ?? .daily
-        let stats = StreakStats.compute(entries: list.streakEntries, cadence: cadence)
-
         return StreakWidgetEntry(
             date: .now,
             listTitle: list.title,
-            cadenceLabel: cadence.displayLabel,
             loggedToday: list.isStreakDayLogged(Date()),
-            currentStreak: stats.currentStreak,
+            totalCount: list.streakEntries.count,
             filename: list.filename
         )
     }
@@ -112,7 +104,7 @@ struct WidgetLogStreakIntent: AppIntent {
             return .result()
         }
 
-        list.toggleStreakDay(Date())
+        list.addStreakEntry(Date())
         store.save(list)
 
         return .result()
@@ -128,19 +120,12 @@ struct StreakWidgetView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            // Title + cadence
+            // Title
             Text(entry.listTitle.uppercased())
                 .font(Theme.labelFont(size: 11))
                 .tracking(11 * 0.08)
                 .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
                 .lineLimit(1)
-
-            if !entry.cadenceLabel.isEmpty {
-                Text(entry.cadenceLabel.uppercased())
-                    .font(Theme.labelFont(size: 9))
-                    .tracking(9 * 0.06)
-                    .foregroundStyle(Theme.ndTextDisabled.resolve(for: colorScheme))
-            }
 
             Spacer()
 
@@ -168,15 +153,12 @@ struct StreakWidgetView: View {
 
             Spacer()
 
-            // Current streak
+            // Total completions
             HStack(spacing: 4) {
-                Image(systemName: "flame.fill")
-                    .font(.system(size: 11))
-                    .foregroundStyle(entry.currentStreak > 0 ? Theme.ndAccent : Theme.ndTextDisabled.resolve(for: colorScheme))
-                Text("\(entry.currentStreak)")
+                Text("\(entry.totalCount)")
                     .font(Theme.monoFont(size: 14, weight: .bold))
                     .foregroundStyle(Theme.ndTextDisplay.resolve(for: colorScheme))
-                Text("DAY\(entry.currentStreak == 1 ? "" : "S")")
+                Text("LOGGED")
                     .font(Theme.labelFont(size: 9))
                     .tracking(9 * 0.06)
                     .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
@@ -204,7 +186,7 @@ struct StreakWidget: Widget {
                 }
         }
         .configurationDisplayName("Streak Check-In")
-        .description("Log a streak with a tap")
+        .description("Log a streak entry with a tap")
         .supportedFamilies([.systemSmall, .systemMedium])
     }
 }

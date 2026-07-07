@@ -127,7 +127,7 @@ final class ListStore: ObservableObject {
             type: type,
             createdDate: Date(),
             items: [],
-            streakCadence: type == .streak ? (cadence ?? .daily) : nil
+            streakCadence: type == .streak ? cadence : nil
         )
         save(list)
         lists.append(list)

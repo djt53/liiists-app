@@ -1,8 +1,16 @@
 import SwiftUI
 
-/// Single-habit streak view: stat pills at top, then a wrapping grid of
-/// small circles starting with today (top-left) and growing as days pass.
-/// Tap any circle to log/unlog that day.
+/// Streak view: a wrapped, newest-first sequence of circles. Each filled
+/// circle is one completion on a given day; the dates are hidden by default.
+///
+/// The render sequence runs from the earliest logged day up to today:
+/// - Today always leads (top-left) with an empty tap-target, followed by any
+///   completions logged today — so you can log more than once a day.
+/// - Each earlier day shows one filled circle per completion, or — if nothing
+///   was logged that day — a single empty circle that persists as a gap.
+///
+/// Tap an empty circle to log that day. Long-press any circle to reveal its
+/// date and edit, remove, or backfill it.
 struct StreakListView: View {
     @EnvironmentObject private var store: ListStore
     @Environment(\.colorScheme) private var colorScheme
@@ -11,37 +19,82 @@ struct StreakListView: View {
     @State private var showRename = false
     @State private var renameText = ""
     @State private var showDeleteConfirm = false
+    @State private var editingIndex: Int?
+    @State private var pendingDate = Date()
 
-    private static let circleSize: CGFloat = 28
-    private static let circleSpacing: CGFloat = 8
+    private static let circleSize: CGFloat = 30
+    private static let circleSpacing: CGFloat = 10
 
     init(list: ItemList) {
         _list = State(initialValue: list)
     }
 
-    private var cadence: StreakCadence {
-        list.streakCadence ?? .daily
+    // MARK: - Cell model
+
+    /// One rendered circle. `filled` carries the entry's index into
+    /// `streakEntries` so edit/remove can target it; `empty` is a tappable
+    /// slot for a day with no completion.
+    private enum StreakCell: Equatable {
+        case filled(entryIndex: Int, day: Date)
+        case empty(day: Date)
+
+        var day: Date {
+            switch self {
+            case let .filled(_, day): return day
+            case let .empty(day): return day
+            }
+        }
     }
 
-    private var stats: StreakStatsResult {
-        StreakStats.compute(entries: list.streakEntries, cadence: cadence)
+    private var cells: [StreakCell] {
+        Self.buildCells(entries: list.streakEntries)
     }
 
-    /// All days that should appear as circles. Newest first.
-    /// Range: createdDate (or today if missing) → today.
-    private var visibleDays: [Date] {
-        let start = list.createdDate ?? Date()
-        return StreakStats.eligibleDays(from: start, cadence: cadence)
-    }
+    /// Build the newest-first render sequence. Pure so it stays easy to reason
+    /// about: today leads with an empty tap-target plus today's completions,
+    /// then each earlier day down to the first logged day.
+    private static func buildCells(
+        entries: [Date],
+        today: Date = Date(),
+        calendar: Calendar = .current
+    ) -> [StreakCell] {
+        let todayStart = calendar.startOfDay(for: today)
 
-    private var entryDaySet: Set<Date> {
-        Set(list.streakEntries.map { Calendar.current.startOfDay(for: $0) })
+        var indicesByDay: [Date: [Int]] = [:]
+        for (i, entry) in entries.enumerated() {
+            indicesByDay[calendar.startOfDay(for: entry), default: []].append(i)
+        }
+
+        let days = entries.map { calendar.startOfDay(for: $0) }
+        let start = min(days.min() ?? todayStart, todayStart)
+        // Cover future-dated entries too (a manual edit can push an entry past
+        // today) so they never silently drop out of the grid.
+        let top = max(days.max() ?? todayStart, todayStart)
+
+        var result: [StreakCell] = []
+        var day = top
+        while day >= start {
+            let idxs = indicesByDay[day] ?? []
+            if calendar.isDate(day, inSameDayAs: todayStart) {
+                // Leading empty tap-target, then today's completions.
+                result.append(.empty(day: day))
+                for i in idxs { result.append(.filled(entryIndex: i, day: day)) }
+            } else if idxs.isEmpty {
+                // A past day with no completion persists as an empty gap.
+                // Future empty days (from a forward-dated edit) are skipped.
+                if day < todayStart { result.append(.empty(day: day)) }
+            } else {
+                for i in idxs { result.append(.filled(entryIndex: i, day: day)) }
+            }
+            guard let prev = calendar.date(byAdding: .day, value: -1, to: day) else { break }
+            day = prev
+        }
+        return result
     }
 
     var body: some View {
         VStack(spacing: 0) {
             header
-            statsRow
             ScrollView {
                 circleGrid
                     .padding(.horizontal, Theme.spaceMD)
@@ -81,6 +134,24 @@ struct StreakListView: View {
         } message: {
             Text("This will permanently delete \"\(list.title)\".")
         }
+        .sheet(isPresented: Binding(
+            get: { editingIndex != nil },
+            set: { if !$0 { editingIndex = nil } }
+        )) {
+            StreakDateEditSheet(
+                date: $pendingDate,
+                onCommit: {
+                    if let idx = editingIndex {
+                        list.updateStreakEntry(at: idx, to: pendingDate)
+                        Theme.lightHaptic()
+                    }
+                    editingIndex = nil
+                },
+                onCancel: { editingIndex = nil }
+            )
+            .presentationDetents([.fraction(0.7)])
+            .presentationDragIndicator(.visible)
+        }
         .enableSwipeBack()
         .onChange(of: list) { _, newValue in
             store.update(newValue)
@@ -96,7 +167,7 @@ struct StreakListView: View {
                     .font(Theme.headingFont(size: Theme.headingSize, weight: .medium))
                     .foregroundStyle(Theme.ndTextDisplay.resolve(for: colorScheme))
                     .tracking(-0.01 * Theme.headingSize)
-                Text(cadence.displayLabel.uppercased())
+                Text("\(list.streakEntries.count) LOGGED")
                     .nothingLabel(color: Theme.ndTextSecondary.resolve(for: colorScheme))
             }
             Spacer()
@@ -105,50 +176,6 @@ struct StreakListView: View {
         .padding(.horizontal, Theme.spaceMD)
         .padding(.top, Theme.spaceLG)
         .padding(.bottom, Theme.spaceMD)
-    }
-
-    // MARK: - Stats Row
-
-    private var statsRow: some View {
-        HStack(spacing: Theme.spaceLG) {
-            statPill(
-                icon: "flame.fill",
-                value: "\(stats.currentStreak)",
-                label: "current",
-                color: stats.currentStreak > 0 ? Theme.ndAccent : Theme.ndTextSecondary.resolve(for: colorScheme)
-            )
-            statPill(
-                icon: "trophy.fill",
-                value: "\(stats.longestStreak)",
-                label: "best",
-                color: Theme.ndWarning
-            )
-            statPill(
-                icon: "calendar",
-                value: "\(stats.thisWeekCount)/\(stats.thisWeekTarget)",
-                label: "this week",
-                color: Theme.ndInteractive.resolve(for: colorScheme)
-            )
-            Spacer()
-        }
-        .padding(.horizontal, Theme.spaceMD)
-    }
-
-    private func statPill(icon: String, value: String, label: String, color: Color) -> some View {
-        VStack(spacing: Theme.space2XS) {
-            HStack(spacing: Theme.spaceXS) {
-                Image(systemName: icon)
-                    .font(.system(size: 12))
-                    .foregroundStyle(color)
-                Text(value)
-                    .font(Theme.monoFont(size: 16, weight: .bold))
-                    .foregroundStyle(Theme.ndTextDisplay.resolve(for: colorScheme))
-            }
-            Text(label.uppercased())
-                .font(Theme.labelFont(size: 9))
-                .tracking(9 * 0.06)
-                .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
-        }
     }
 
     // MARK: - Circle Grid
@@ -162,35 +189,103 @@ struct StreakListView: View {
             )
         ]
         return LazyVGrid(columns: columns, alignment: .leading, spacing: Self.circleSpacing) {
-            ForEach(visibleDays, id: \.timeIntervalSince1970) { day in
-                circle(for: day)
+            ForEach(Array(cells.enumerated()), id: \.offset) { _, cell in
+                circle(for: cell)
             }
         }
     }
 
     @ViewBuilder
-    private func circle(for day: Date) -> some View {
-        let isLogged = entryDaySet.contains(Calendar.current.startOfDay(for: day))
-        let isToday = Calendar.current.isDate(day, inSameDayAs: Date())
-        let fill: Color = isLogged
-            ? (isToday ? Theme.ndAccent : Theme.ndSuccess)
-            : .clear
-        let stroke: Color = isToday
-            ? Theme.ndAccent
-            : Theme.ndBorderVisible.resolve(for: colorScheme)
+    private func circle(for cell: StreakCell) -> some View {
+        let isToday = Calendar.current.isDateInToday(cell.day)
 
-        Button {
-            list.toggleStreakDay(day)
-            Theme.mediumHaptic()
-            Analytics.streakLogged(listTitle: list.title)
-        } label: {
-            ZStack {
-                Circle().fill(fill)
-                Circle().strokeBorder(stroke, lineWidth: isLogged ? 0 : 1)
+        switch cell {
+        case let .filled(entryIndex, day):
+            Button {
+                // Filled circles have no primary tap action; editing is via
+                // long-press. Keep the tap area alive for a soft haptic.
+                Theme.lightHaptic()
+            } label: {
+                circleShape(
+                    fill: isToday ? Theme.ndAccent : Theme.ndSuccess,
+                    stroke: .clear,
+                    lineWidth: 0
+                )
             }
-            .frame(width: Self.circleSize, height: Self.circleSize)
+            .buttonStyle(.plain)
+            .contextMenu {
+                Section(Self.dateLabel(for: day)) {
+                    Button {
+                        pendingDate = day
+                        editingIndex = entryIndex
+                    } label: {
+                        Label("Edit Date", systemImage: "calendar")
+                    }
+                    Button(role: .destructive) {
+                        list.removeStreakEntry(at: entryIndex)
+                        Theme.lightHaptic()
+                    } label: {
+                        Label("Remove", systemImage: "trash")
+                    }
+                }
+            }
+
+        case let .empty(day):
+            Button {
+                list.addStreakEntry(day)
+                Theme.mediumHaptic()
+                Analytics.streakLogged(listTitle: list.title)
+            } label: {
+                circleShape(
+                    fill: .clear,
+                    stroke: isToday
+                        ? Theme.ndAccent
+                        : Theme.ndBorderVisible.resolve(for: colorScheme),
+                    lineWidth: isToday ? 1.5 : 1
+                )
+            }
+            .buttonStyle(.plain)
+            .contextMenu {
+                Section(isToday ? "Today" : Self.dateLabel(for: day)) {
+                    Button {
+                        list.addStreakEntry(day)
+                        Theme.mediumHaptic()
+                        Analytics.streakLogged(listTitle: list.title)
+                    } label: {
+                        Label(isToday ? "Log Today" : "Log This Day", systemImage: "checkmark.circle")
+                    }
+                }
+            }
         }
-        .buttonStyle(.plain)
+    }
+
+    private func circleShape(fill: Color, stroke: Color, lineWidth: CGFloat) -> some View {
+        ZStack {
+            Circle().fill(fill)
+            Circle().strokeBorder(stroke, lineWidth: lineWidth)
+        }
+        .frame(width: Self.circleSize, height: Self.circleSize)
+    }
+
+    // MARK: - Date label
+
+    private static let dateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = .current
+        return f
+    }()
+
+    static func dateLabel(for day: Date, now: Date = Date()) -> String {
+        let cal = Calendar.current
+        if cal.isDate(day, inSameDayAs: now) { return "Today" }
+        if cal.isDateInYesterday(day) { return "Yesterday" }
+        let f = dateFormatter
+        if cal.component(.year, from: day) == cal.component(.year, from: now) {
+            f.dateFormat = "EEE, MMM d"
+        } else {
+            f.dateFormat = "MMM d, ʼyy"
+        }
+        return f.string(from: day)
     }
 
     // MARK: - Overflow Menu
@@ -215,5 +310,61 @@ struct StreakListView: View {
                 .foregroundStyle(Theme.ndTextPrimary.resolve(for: colorScheme))
                 .frame(width: 36, height: 36)
         }
+    }
+}
+
+// MARK: - Date Edit Sheet
+
+/// Day-only date picker for re-dating a streak entry.
+struct StreakDateEditSheet: View {
+    @Binding var date: Date
+    var onCommit: () -> Void
+    var onCancel: () -> Void
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Button(action: onCancel) {
+                    Text("CANCEL")
+                        .font(Theme.labelFont(size: 13))
+                        .textCase(.uppercase)
+                        .tracking(13 * 0.06)
+                        .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
+                }
+                Spacer()
+                Button(action: onCommit) {
+                    Text("SAVE")
+                        .font(Theme.labelFont(size: 13))
+                        .textCase(.uppercase)
+                        .tracking(13 * 0.06)
+                        .foregroundStyle(Theme.ndBlack.resolve(for: colorScheme))
+                        .padding(.horizontal, Theme.spaceLG)
+                        .padding(.vertical, Theme.spaceSM)
+                        .background(Theme.ndTextPrimary.resolve(for: colorScheme))
+                        .clipShape(Capsule())
+                }
+            }
+            .padding(.horizontal, Theme.spaceMD)
+            .padding(.top, Theme.spaceLG)
+
+            Spacer().frame(height: Theme.space2XL)
+
+            Text("DATE")
+                .nothingLabel(color: Theme.ndTextSecondary.resolve(for: colorScheme))
+                .padding(.horizontal, Theme.spaceMD)
+
+            DatePicker(
+                "",
+                selection: $date,
+                displayedComponents: [.date]
+            )
+            .datePickerStyle(.graphical)
+            .labelsHidden()
+            .padding(.horizontal, Theme.spaceMD)
+
+            Spacer()
+        }
+        .background(Theme.ndSurface.resolve(for: colorScheme))
     }
 }

@@ -53,15 +53,25 @@ struct ItemList: Identifiable, Equatable {
     var itemCount: Int { items.count }
     var checkedCount: Int { items.filter(\.isChecked).count }
 
-    /// Mutates `streakEntries` by toggling today on/off.
-    mutating func toggleStreakDay(_ date: Date, calendar: Calendar = .current) {
-        let target = calendar.startOfDay(for: date)
-        if let idx = streakEntries.firstIndex(where: { calendar.startOfDay(for: $0) == target }) {
-            streakEntries.remove(at: idx)
-        } else {
-            streakEntries.insert(target, at: 0)
-            streakEntries.sort(by: >)
-        }
+    /// Appends a completion entry (day resolution). Multiple entries may share
+    /// a day — a streak is an append-only sequence of completions, not a
+    /// per-day toggle. Kept newest-first.
+    mutating func addStreakEntry(_ date: Date = Date(), calendar: Calendar = .current) {
+        streakEntries.append(calendar.startOfDay(for: date))
+        streakEntries.sort(by: >)
+    }
+
+    /// Removes the entry at `index` (index into `streakEntries` as rendered).
+    mutating func removeStreakEntry(at index: Int) {
+        guard streakEntries.indices.contains(index) else { return }
+        streakEntries.remove(at: index)
+    }
+
+    /// Re-dates the entry at `index`, then re-sorts newest-first.
+    mutating func updateStreakEntry(at index: Int, to date: Date, calendar: Calendar = .current) {
+        guard streakEntries.indices.contains(index) else { return }
+        streakEntries[index] = calendar.startOfDay(for: date)
+        streakEntries.sort(by: >)
     }
 
     func isStreakDayLogged(_ date: Date, calendar: Calendar = .current) -> Bool {

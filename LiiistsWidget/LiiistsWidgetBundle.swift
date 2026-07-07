@@ -8,6 +8,6 @@ struct LiiistsWidgetBundle: WidgetBundle {
         AllListsWidget()
         QuickAddWidget()
         QuickAddRowWidget()
-        // StreakWidget hidden in v1.0 — re-add when streaks ship. See log.md session 10.
+        StreakWidget()
     }
 }
