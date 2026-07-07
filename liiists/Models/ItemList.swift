@@ -19,6 +19,22 @@ struct ItemList: Identifiable, Equatable {
     /// Extra frontmatter keys we don't recognize — preserved on round-trip.
     var extraFrontmatter: [String: String]
 
+    // MARK: - Streak display floor
+
+    private static let streakFromFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+
+    /// Earliest date ever logged. Persisted in frontmatter so removing entries
+    /// never shrinks the visible grid range and circles stay as placeholders.
+    var streakDisplayFrom: Date? {
+        get { extraFrontmatter["streak_from"].flatMap { Self.streakFromFmt.date(from: $0) } }
+        set { extraFrontmatter["streak_from"] = newValue.map { Self.streakFromFmt.string(from: $0) } }
+    }
+
     enum ListType: String, Equatable {
         case list
         case checklist
@@ -57,8 +73,12 @@ struct ItemList: Identifiable, Equatable {
     /// a day — a streak is an append-only sequence of completions, not a
     /// per-day toggle. Kept newest-first.
     mutating func addStreakEntry(_ date: Date = Date(), calendar: Calendar = .current) {
-        streakEntries.append(calendar.startOfDay(for: date))
+        let day = calendar.startOfDay(for: date)
+        streakEntries.append(day)
         streakEntries.sort(by: >)
+        if streakDisplayFrom == nil || day < streakDisplayFrom! {
+            streakDisplayFrom = day
+        }
     }
 
     /// Removes the entry at `index` (index into `streakEntries` as rendered).
@@ -67,11 +87,23 @@ struct ItemList: Identifiable, Equatable {
         streakEntries.remove(at: index)
     }
 
+    /// Removes all entries for the given calendar day.
+    mutating func removeStreakEntriesForDay(_ day: Date, calendar: Calendar = .current) {
+        let target = calendar.startOfDay(for: day)
+        streakEntries.removeAll { calendar.startOfDay(for: $0) == target }
+    }
+
     /// Re-dates the entry at `index`, then re-sorts newest-first.
     mutating func updateStreakEntry(at index: Int, to date: Date, calendar: Calendar = .current) {
         guard streakEntries.indices.contains(index) else { return }
         streakEntries[index] = calendar.startOfDay(for: date)
         streakEntries.sort(by: >)
+    }
+
+    /// Moves all entries for `oldDay` to `newDate` (day resolution).
+    mutating func moveStreakEntry(from oldDay: Date, to newDate: Date, calendar: Calendar = .current) {
+        removeStreakEntriesForDay(oldDay, calendar: calendar)
+        addStreakEntry(newDate, calendar: calendar)
     }
 
     func isStreakDayLogged(_ date: Date, calendar: Calendar = .current) -> Bool {

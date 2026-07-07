@@ -40,7 +40,8 @@ targets:
           - SpaceGrotesk-Variable.ttf
           - SpaceMono-Regular.ttf
           - SpaceMono-Bold.ttf
-        UILaunchScreen: {}
+        UILaunchScreen:
+          UIColorName: LaunchBackground
         ITSAppUsesNonExemptEncryption: false
         CFBundleURLTypes:
           - CFBundleURLSchemes:

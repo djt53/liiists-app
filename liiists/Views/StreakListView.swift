@@ -19,11 +19,13 @@ struct StreakListView: View {
     @State private var showRename = false
     @State private var renameText = ""
     @State private var showDeleteConfirm = false
-    @State private var editingIndex: Int?
+    @State private var editingDay: Date?
+    @State private var editingEntryIndex: Int?
     @State private var pendingDate = Date()
 
     private static let circleSize: CGFloat = 30
     private static let circleSpacing: CGFloat = 10
+    private static let dateHeaderHeight: CGFloat = 12
 
     init(list: ItemList) {
         _list = State(initialValue: list)
@@ -31,30 +33,32 @@ struct StreakListView: View {
 
     // MARK: - Cell model
 
-    /// One rendered circle. `filled` carries the entry's index into
-    /// `streakEntries` so edit/remove can target it; `empty` is a tappable
-    /// slot for a day with no completion.
+    /// One circle per calendar day for past days; today gets a persistent empty
+    /// tap-target plus one indexed filled cell per logged entry so you can keep
+    /// tapping to log multiple completions. `entryIndex` is nil for past-day
+    /// filled cells (remove targets the whole day).
     private enum StreakCell: Equatable {
-        case filled(entryIndex: Int, day: Date)
+        case filled(day: Date, entryIndex: Int?)
         case empty(day: Date)
 
         var day: Date {
             switch self {
-            case let .filled(_, day): return day
+            case let .filled(day, _): return day
             case let .empty(day): return day
             }
         }
     }
 
     private var cells: [StreakCell] {
-        Self.buildCells(entries: list.streakEntries)
+        Self.buildCells(entries: list.streakEntries, displayFrom: list.streakDisplayFrom)
     }
 
-    /// Build the newest-first render sequence. Pure so it stays easy to reason
-    /// about: today leads with an empty tap-target plus today's completions,
-    /// then each earlier day down to the first logged day.
+    /// Builds the newest-first cell sequence. Today uses the original multi-cell
+    /// model (persistent empty tap-target + one indexed filled cell per log) so
+    /// repeated taps keep adding entries. Past days use one-cell-per-day toggle.
     private static func buildCells(
         entries: [Date],
+        displayFrom: Date? = nil,
         today: Date = Date(),
         calendar: Calendar = .current
     ) -> [StreakCell] {
@@ -64,27 +68,26 @@ struct StreakListView: View {
         for (i, entry) in entries.enumerated() {
             indicesByDay[calendar.startOfDay(for: entry), default: []].append(i)
         }
+        let loggedDays = Set(entries.map { calendar.startOfDay(for: $0) })
 
-        let days = entries.map { calendar.startOfDay(for: $0) }
-        let start = min(days.min() ?? todayStart, todayStart)
-        // Cover future-dated entries too (a manual edit can push an entry past
-        // today) so they never silently drop out of the grid.
-        let top = max(days.max() ?? todayStart, todayStart)
+        let entriesMin = entries.map { calendar.startOfDay(for: $0) }.min()
+        let effectiveMin = ([entriesMin, displayFrom] as [Date?]).compactMap { $0 }.min()
+        let start = min(effectiveMin ?? todayStart, todayStart)
 
         var result: [StreakCell] = []
-        var day = top
+        var day = todayStart
         while day >= start {
-            let idxs = indicesByDay[day] ?? []
             if calendar.isDate(day, inSameDayAs: todayStart) {
-                // Leading empty tap-target, then today's completions.
-                result.append(.empty(day: day))
-                for i in idxs { result.append(.filled(entryIndex: i, day: day)) }
-            } else if idxs.isEmpty {
-                // A past day with no completion persists as an empty gap.
-                // Future empty days (from a forward-dated edit) are skipped.
-                if day < todayStart { result.append(.empty(day: day)) }
+                // Today: persistent tap-target first, then one filled cell per log
+                result.append(.empty(day: todayStart))
+                for i in (indicesByDay[todayStart] ?? []) {
+                    result.append(.filled(day: todayStart, entryIndex: i))
+                }
+            } else if loggedDays.contains(day) {
+                // Past logged day: single filled cell, whole-day removal on tap
+                result.append(.filled(day: day, entryIndex: nil))
             } else {
-                for i in idxs { result.append(.filled(entryIndex: i, day: day)) }
+                result.append(.empty(day: day))
             }
             guard let prev = calendar.date(byAdding: .day, value: -1, to: day) else { break }
             day = prev
@@ -135,19 +138,27 @@ struct StreakListView: View {
             Text("This will permanently delete \"\(list.title)\".")
         }
         .sheet(isPresented: Binding(
-            get: { editingIndex != nil },
-            set: { if !$0 { editingIndex = nil } }
+            get: { editingDay != nil },
+            set: { if !$0 { editingDay = nil } }
         )) {
             StreakDateEditSheet(
                 date: $pendingDate,
                 onCommit: {
-                    if let idx = editingIndex {
-                        list.updateStreakEntry(at: idx, to: pendingDate)
+                    if let original = editingDay {
+                        if let idx = editingEntryIndex {
+                            list.updateStreakEntry(at: idx, to: pendingDate)
+                        } else {
+                            list.moveStreakEntry(from: original, to: pendingDate)
+                        }
                         Theme.lightHaptic()
                     }
-                    editingIndex = nil
+                    editingDay = nil
+                    editingEntryIndex = nil
                 },
-                onCancel: { editingIndex = nil }
+                onCancel: {
+                    editingDay = nil
+                    editingEntryIndex = nil
+                }
             )
             .presentationDetents([.fraction(0.7)])
             .presentationDragIndicator(.visible)
@@ -188,11 +199,69 @@ struct StreakListView: View {
                 alignment: .center
             )
         ]
+        let labelMap = dateIndicators(for: cells)
         return LazyVGrid(columns: columns, alignment: .leading, spacing: Self.circleSpacing) {
-            ForEach(Array(cells.enumerated()), id: \.offset) { _, cell in
-                circle(for: cell)
+            ForEach(Array(cells.enumerated()), id: \.offset) { i, cell in
+                VStack(spacing: 3) {
+                    if let label = labelMap[i] {
+                        Text(label)
+                            .font(Theme.labelFont(size: 8))
+                            .tracking(8 * 0.04)
+                            .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                            .frame(height: Self.dateHeaderHeight)
+                    } else {
+                        Color.clear.frame(height: Self.dateHeaderHeight)
+                    }
+                    circle(for: cell)
+                }
             }
         }
+    }
+
+    // MARK: - Date indicators
+
+    private static let shortDateFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MMM d"
+        return f
+    }()
+
+    /// Returns a map of cell-index → label for the first filled cell and
+    /// every 7 calendar days before it, anchored on that cell's date.
+    private func dateIndicators(for cells: [StreakCell]) -> [Int: String] {
+        guard !cells.isEmpty else { return [:] }
+        let cal = Calendar.current
+
+        guard let anchorIdx = cells.indices.first(where: {
+            if case .filled = cells[$0] { return true }
+            return false
+        }) else { return [:] }
+
+        let anchorDay = cal.startOfDay(for: cells[anchorIdx].day)
+        let earliestDay = cal.startOfDay(for: cells.last!.day)
+
+        // day → index of first cell on that day
+        var dayToFirstIdx: [Date: Int] = [:]
+        for (i, cell) in cells.enumerated() {
+            let d = cal.startOfDay(for: cell.day)
+            if dayToFirstIdx[d] == nil { dayToFirstIdx[d] = i }
+        }
+
+        var result: [Int: String] = [:]
+        var target = anchorDay
+        while target >= earliestDay {
+            if let idx = dayToFirstIdx[target] {
+                let label = cal.isDateInToday(target)
+                    ? "TODAY"
+                    : Self.shortDateFmt.string(from: target).uppercased()
+                result[idx] = label
+            }
+            guard let prev = cal.date(byAdding: .day, value: -7, to: target) else { break }
+            target = prev
+        }
+        return result
     }
 
     @ViewBuilder
@@ -200,14 +269,17 @@ struct StreakListView: View {
         let isToday = Calendar.current.isDateInToday(cell.day)
 
         switch cell {
-        case let .filled(entryIndex, day):
+        case let .filled(day, entryIndex):
             Button {
-                // Filled circles have no primary tap action; editing is via
-                // long-press. Keep the tap area alive for a soft haptic.
+                if let idx = entryIndex {
+                    list.removeStreakEntry(at: idx)
+                } else {
+                    list.removeStreakEntriesForDay(day)
+                }
                 Theme.lightHaptic()
             } label: {
                 circleShape(
-                    fill: isToday ? Theme.ndAccent : Theme.ndSuccess,
+                    fill: Theme.ndTextDisplay.resolve(for: colorScheme),
                     stroke: .clear,
                     lineWidth: 0
                 )
@@ -217,12 +289,17 @@ struct StreakListView: View {
                 Section(Self.dateLabel(for: day)) {
                     Button {
                         pendingDate = day
-                        editingIndex = entryIndex
+                        editingDay = day
+                        editingEntryIndex = entryIndex
                     } label: {
                         Label("Edit Date", systemImage: "calendar")
                     }
                     Button(role: .destructive) {
-                        list.removeStreakEntry(at: entryIndex)
+                        if let idx = entryIndex {
+                            list.removeStreakEntry(at: idx)
+                        } else {
+                            list.removeStreakEntriesForDay(day)
+                        }
                         Theme.lightHaptic()
                     } label: {
                         Label("Remove", systemImage: "trash")
@@ -238,9 +315,7 @@ struct StreakListView: View {
             } label: {
                 circleShape(
                     fill: .clear,
-                    stroke: isToday
-                        ? Theme.ndAccent
-                        : Theme.ndBorderVisible.resolve(for: colorScheme),
+                    stroke: Theme.ndTextDisplay.resolve(for: colorScheme),
                     lineWidth: isToday ? 1.5 : 1
                 )
             }

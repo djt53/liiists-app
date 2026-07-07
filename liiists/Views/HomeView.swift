@@ -568,11 +568,20 @@ struct NewListSheet: View {
                 Text("TYPE")
                     .nothingLabel(color: Theme.ndTextSecondary.resolve(for: colorScheme))
 
-                HStack(spacing: 0) {
-                    segmentButton(label: "LIST", icon: "list.bullet", type: .list)
-                    segmentButton(label: "CHECKLIST", icon: "checklist", type: .checklist)
-                    segmentButton(label: "LOG", icon: "clock", type: .log)
-                    segmentButton(label: "STREAK", icon: "flame", type: .streak)
+                VStack(spacing: 0) {
+                    HStack(spacing: 0) {
+                        segmentButton(label: "LIST", icon: "list.bullet", type: .list)
+                        Rectangle().fill(Theme.ndBorderVisible.resolve(for: colorScheme)).frame(width: 1)
+                        segmentButton(label: "CHECKLIST", icon: "checklist", type: .checklist)
+                    }
+                    .frame(height: 44)
+                    Rectangle().fill(Theme.ndBorderVisible.resolve(for: colorScheme)).frame(height: 1)
+                    HStack(spacing: 0) {
+                        segmentButton(label: "LOG", icon: "clock", type: .log)
+                        Rectangle().fill(Theme.ndBorderVisible.resolve(for: colorScheme)).frame(width: 1)
+                        segmentButton(label: "STREAK", icon: "flame", type: .streak)
+                    }
+                    .frame(height: 44)
                 }
                 .background(
                     RoundedRectangle(cornerRadius: Theme.cornerRadius)
@@ -602,11 +611,8 @@ struct NewListSheet: View {
                     .font(Theme.labelFont(size: Theme.labelSize))
                     .tracking(Theme.labelSize * 0.04)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.6)
             }
-            .padding(.horizontal, 2)
-            .frame(maxWidth: .infinity)
-            .frame(height: 40)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .foregroundStyle(
                 isActive
                     ? Theme.ndBlack.resolve(for: colorScheme)
