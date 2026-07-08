@@ -371,57 +371,64 @@ struct StreakListView: View {
     private static let weekdayInitials = ["M", "T", "W", "T", "F", "S", "S"]
     private static let weekGutter: CGFloat = 38
 
-    /// One week in the grid: its Monday plus the seven Mon→Sun cells.
+    /// One row in the grid: its first in-range day (anchor) + seven Mon→Sun cells.
     private struct WeekRow: Identifiable {
         let id: Int
-        let monday: Date
+        let anchor: Date
+        let containsToday: Bool
         let cells: [WeekCell]
     }
 
     private var weekRows: [WeekRow] {
-        // Oldest week first so the grid reads top→bottom = past→present, like a
-        // standard calendar (current week lands at the bottom).
-        Array(Self.buildWeeks(entries: list.streakEntries, today: Date()).reversed())
+        Self.buildWeeks(entries: list.streakEntries, today: Date())
     }
 
-    /// Newest week first (top). Each row is Mon→Sun; days before the earliest
-    /// entry or after today are blanks so every column is a fixed weekday.
+    /// Oldest row first (top) so the grid reads top→bottom = past→present. Rows
+    /// break on Mondays **and** the 1st of a month, so a month always starts a
+    /// fresh row with its first day in the correct weekday column (standard
+    /// month-calendar layout). Empty weekday slots render as blanks.
     private static func buildWeeks(entries: [StreakEntry], today: Date) -> [WeekRow] {
         let cal = Calendar(identifier: .iso8601) // firstWeekday == Monday
         let todayStart = cal.startOfDay(for: today)
         let earliest = entries.map { cal.startOfDay(for: $0.date) }.min() ?? todayStart
+        let start = min(earliest, todayStart)
 
-        func monday(of date: Date) -> Date {
-            cal.dateInterval(of: .weekOfYear, for: date)?.start ?? cal.startOfDay(for: date)
-        }
-        let earliestMonday = monday(of: earliest)
+        // ISO weekday: 1=Sun…7=Sat → Mon-based column 0…6.
+        func column(_ date: Date) -> Int { (cal.component(.weekday, from: date) + 5) % 7 }
 
         var rows: [WeekRow] = []
-        var blankID = 0
         var rowID = 0
-        var weekStart = monday(of: todayStart)
-        while weekStart >= earliestMonday {
-            var cells: [WeekCell] = []
-            for offset in 0..<7 {
-                let day = cal.startOfDay(for: cal.date(byAdding: .day, value: offset, to: weekStart)!)
-                if day < earliest || day > todayStart {
-                    cells.append(.blank(blankID)); blankID += 1
-                } else {
-                    cells.append(.day(day))
-                }
+        var slots = [Date?](repeating: nil, count: 7)
+        var anchor: Date?
+        var containsToday = false
+
+        var day = start
+        while day <= todayStart {
+            let col = column(day)
+            let breakRow = (col == 0 || cal.component(.day, from: day) == 1) && anchor != nil
+            if breakRow {
+                let cells = slots.enumerated().map { i, d in d.map { WeekCell.day($0) } ?? WeekCell.blank(i) }
+                rows.append(WeekRow(id: rowID, anchor: anchor!, containsToday: containsToday, cells: cells))
+                rowID += 1
+                slots = [Date?](repeating: nil, count: 7)
+                anchor = nil
+                containsToday = false
             }
-            rows.append(WeekRow(id: rowID, monday: weekStart, cells: cells))
-            rowID += 1
-            guard let prev = cal.date(byAdding: .day, value: -7, to: weekStart) else { break }
-            weekStart = prev
+            slots[col] = day
+            if anchor == nil { anchor = day }
+            if cal.isDate(day, inSameDayAs: todayStart) { containsToday = true }
+            guard let next = cal.date(byAdding: .day, value: 1, to: day) else { break }
+            day = next
+        }
+        if let anchor {
+            let cells = slots.enumerated().map { i, d in d.map { WeekCell.day($0) } ?? WeekCell.blank(i) }
+            rows.append(WeekRow(id: rowID, anchor: anchor, containsToday: containsToday, cells: cells))
         }
         return rows
     }
 
-    private func weekLabel(for monday: Date) -> String {
-        Calendar(identifier: .iso8601).isDate(monday, equalTo: Date(), toGranularity: .weekOfYear)
-            ? "THIS WK"
-            : Self.shortDateFmt.string(from: monday).uppercased()
+    private func weekLabel(for row: WeekRow) -> String {
+        row.containsToday ? "THIS WK" : Self.shortDateFmt.string(from: row.anchor).uppercased()
     }
 
     private var weekGrid: some View {
@@ -441,7 +448,7 @@ struct StreakListView: View {
             }
             // Week rows, newest first — each labeled with its week-of date
             ForEach(weekRows) { week in
-                Text(weekLabel(for: week.monday))
+                Text(weekLabel(for: week))
                     .font(Theme.labelFont(size: 8))
                     .tracking(8 * 0.04)
                     .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
