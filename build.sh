@@ -23,7 +23,12 @@ xcodebuild archive -scheme liiists \
 
 if [ ${PIPESTATUS[0]} -ne 0 ]; then echo "✗ Archive failed"; exit 1; fi
 
-# Export & upload
+# Seed the export options into the (gitignored) build dir from the tracked copy
+mkdir -p build
+cp ExportOptions.plist build/ExportOptions.plist
+
+# Export & upload. No -authenticationKey* flags: rely on Xcode's stored account
+# for cloud-managed distribution signing (there is no local Distribution cert).
 xcodebuild -exportArchive \
   -archivePath build/liiists.xcarchive \
   -exportOptionsPlist build/ExportOptions.plist \
