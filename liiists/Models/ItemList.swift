@@ -58,6 +58,21 @@ struct ItemList: Identifiable, Equatable {
     /// Number of filled completions — drives the home badge and header count.
     var streakLoggedCount: Int { streakEntries.filter(\.filled).count }
 
+    /// Sets the filled state of every entry on `day` (day granularity). Turning
+    /// on with no existing entry creates one; turning off flips existing entries
+    /// to unfilled placeholders. Used by the week view's per-day toggle.
+    mutating func setStreakDay(_ day: Date, filled: Bool, calendar: Calendar = .current) {
+        let target = calendar.startOfDay(for: day)
+        let existing = streakEntries.indices.filter {
+            calendar.startOfDay(for: streakEntries[$0].date) == target
+        }
+        if existing.isEmpty {
+            if filled { addStreakEntry(day, calendar: calendar) }
+        } else {
+            for i in existing { streakEntries[i].filled = filled }
+        }
+    }
+
     /// Whether a filled completion exists for `date`'s calendar day.
     func isStreakDayLogged(_ date: Date, calendar: Calendar = .current) -> Bool {
         let target = calendar.startOfDay(for: date)

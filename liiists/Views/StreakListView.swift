@@ -21,6 +21,8 @@ struct StreakListView: View {
     @State private var showDeleteConfirm = false
     @State private var editingIndex: Int?
     @State private var pendingDate = Date()
+    /// When true, render a Monday-aligned week grid instead of the flow timeline.
+    @AppStorage private var weekView: Bool
 
     private static let circleSize: CGFloat = 30
     private static let circleSpacing: CGFloat = 10
@@ -28,6 +30,7 @@ struct StreakListView: View {
 
     init(list: ItemList) {
         _list = State(initialValue: list)
+        _weekView = AppStorage(wrappedValue: false, "streak_week_view_\(list.filename)")
     }
 
     // MARK: - Cell model
@@ -98,10 +101,16 @@ struct StreakListView: View {
         VStack(spacing: 0) {
             header
             ScrollView {
-                circleGrid
-                    .padding(.horizontal, Theme.spaceMD)
-                    .padding(.top, Theme.spaceLG)
-                    .padding(.bottom, Theme.space2XL)
+                Group {
+                    if weekView {
+                        weekGrid
+                    } else {
+                        circleGrid
+                    }
+                }
+                .padding(.horizontal, Theme.spaceMD)
+                .padding(.top, Theme.spaceLG)
+                .padding(.bottom, Theme.space2XL)
             }
         }
         .background(Theme.ndBlack.resolve(for: colorScheme))
@@ -350,6 +359,139 @@ struct StreakListView: View {
         .frame(width: Self.circleSize, height: Self.circleSize)
     }
 
+    // MARK: - Week grid (Monday-aligned)
+
+    /// One cell in the week grid — a real day, or a blank spacer for days
+    /// outside the [earliest, today] range that keep the weekday columns aligned.
+    private enum WeekCell: Equatable {
+        case day(Date)
+        case blank(Int)
+    }
+
+    private static let weekdayInitials = ["M", "T", "W", "T", "F", "S", "S"]
+    private static let weekGutter: CGFloat = 38
+
+    /// One week in the grid: its Monday plus the seven Mon→Sun cells.
+    private struct WeekRow: Identifiable {
+        let id: Int
+        let monday: Date
+        let cells: [WeekCell]
+    }
+
+    private var weekRows: [WeekRow] {
+        // Oldest week first so the grid reads top→bottom = past→present, like a
+        // standard calendar (current week lands at the bottom).
+        Array(Self.buildWeeks(entries: list.streakEntries, today: Date()).reversed())
+    }
+
+    /// Newest week first (top). Each row is Mon→Sun; days before the earliest
+    /// entry or after today are blanks so every column is a fixed weekday.
+    private static func buildWeeks(entries: [StreakEntry], today: Date) -> [WeekRow] {
+        let cal = Calendar(identifier: .iso8601) // firstWeekday == Monday
+        let todayStart = cal.startOfDay(for: today)
+        let earliest = entries.map { cal.startOfDay(for: $0.date) }.min() ?? todayStart
+
+        func monday(of date: Date) -> Date {
+            cal.dateInterval(of: .weekOfYear, for: date)?.start ?? cal.startOfDay(for: date)
+        }
+        let earliestMonday = monday(of: earliest)
+
+        var rows: [WeekRow] = []
+        var blankID = 0
+        var rowID = 0
+        var weekStart = monday(of: todayStart)
+        while weekStart >= earliestMonday {
+            var cells: [WeekCell] = []
+            for offset in 0..<7 {
+                let day = cal.startOfDay(for: cal.date(byAdding: .day, value: offset, to: weekStart)!)
+                if day < earliest || day > todayStart {
+                    cells.append(.blank(blankID)); blankID += 1
+                } else {
+                    cells.append(.day(day))
+                }
+            }
+            rows.append(WeekRow(id: rowID, monday: weekStart, cells: cells))
+            rowID += 1
+            guard let prev = cal.date(byAdding: .day, value: -7, to: weekStart) else { break }
+            weekStart = prev
+        }
+        return rows
+    }
+
+    private func weekLabel(for monday: Date) -> String {
+        Calendar(identifier: .iso8601).isDate(monday, equalTo: Date(), toGranularity: .weekOfYear)
+            ? "THIS WK"
+            : Self.shortDateFmt.string(from: monday).uppercased()
+    }
+
+    private var weekGrid: some View {
+        // Fixed label column + 7 flexible day columns, so the circles spread
+        // across the full width instead of clustering at intrinsic size.
+        let columns = [GridItem(.fixed(Self.weekGutter), alignment: .leading)]
+            + Array(repeating: GridItem(.flexible(), spacing: Self.circleSpacing), count: 7)
+
+        return LazyVGrid(columns: columns, alignment: .center, spacing: Self.circleSpacing) {
+            // Weekday header
+            Color.clear.frame(height: 1)
+            ForEach(Array(Self.weekdayInitials.enumerated()), id: \.offset) { _, initial in
+                Text(initial)
+                    .font(Theme.labelFont(size: 8))
+                    .tracking(8 * 0.04)
+                    .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
+            }
+            // Week rows, newest first — each labeled with its week-of date
+            ForEach(weekRows) { week in
+                Text(weekLabel(for: week.monday))
+                    .font(Theme.labelFont(size: 8))
+                    .tracking(8 * 0.04)
+                    .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .frame(width: Self.weekGutter, alignment: .leading)
+                ForEach(Array(week.cells.enumerated()), id: \.offset) { _, cell in
+                    weekCell(cell)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func weekCell(_ cell: WeekCell) -> some View {
+        switch cell {
+        case .blank:
+            Color.clear.frame(width: Self.circleSize, height: Self.circleSize)
+
+        case let .day(date):
+            let logged = list.isStreakDayLogged(date)
+            let isToday = Calendar.current.isDateInToday(date)
+            Button {
+                list.setStreakDay(date, filled: !logged)
+                logged ? Theme.lightHaptic() : Theme.mediumHaptic()
+                if !logged { Analytics.streakLogged(listTitle: list.title) }
+            } label: {
+                circleShape(
+                    fill: logged ? Theme.ndTextDisplay.resolve(for: colorScheme) : .clear,
+                    stroke: logged ? .clear : Theme.ndTextDisplay.resolve(for: colorScheme),
+                    lineWidth: logged ? 0 : (isToday ? 1.5 : 1)
+                )
+            }
+            .buttonStyle(.plain)
+            .contextMenu {
+                Section(Self.dateLabel(for: date)) {
+                    Button {
+                        list.setStreakDay(date, filled: !logged)
+                        logged ? Theme.lightHaptic() : Theme.mediumHaptic()
+                    } label: {
+                        Label(
+                            logged ? "Unmark" : "Mark done",
+                            systemImage: logged ? "circle" : "checkmark.circle"
+                        )
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: - Date label
 
     private static let dateFormatter: DateFormatter = {
@@ -375,6 +517,15 @@ struct StreakListView: View {
 
     private var overflowMenu: some View {
         Menu {
+            Button {
+                weekView.toggle()
+            } label: {
+                Label(
+                    weekView ? "Continuous view" : "Sort by week",
+                    systemImage: weekView ? "square.grid.3x1.below.line.grid.1x2" : "calendar"
+                )
+            }
+            Divider()
             Button {
                 renameText = list.title
                 showRename = true
