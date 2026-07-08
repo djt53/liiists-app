@@ -441,7 +441,7 @@ struct ListRow: View {
         }
         switch list.type {
         case .streak:
-            return list.streakEntries.isEmpty ? nil : "\(list.streakEntries.count)"
+            return list.streakLoggedCount == 0 ? nil : "\(list.streakLoggedCount)"
         case .checklist:
             return list.itemCount > 0 ? "\(list.checkedCount)/\(list.itemCount)" : nil
         case .list:
@@ -456,11 +456,7 @@ struct ListRow: View {
             // Type icon
             Image(systemName: typeIcon)
                 .font(.system(size: 16, weight: .light))
-                .foregroundStyle(
-                    list.type == .streak
-                        ? Theme.ndAccent
-                        : Theme.ndTextSecondary.resolve(for: colorScheme)
-                )
+                .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
                 .frame(width: 24)
 
             Text(list.title)

@@ -13,27 +13,13 @@ struct ItemList: Identifiable, Equatable {
     /// Cadence — only populated when `type == .streak`.
     var streakCadence: StreakCadence?
 
-    /// Completion dates — only populated when `type == .streak`.
-    var streakEntries: [Date]
+    /// Completion circles, newest-first — only populated when `type == .streak`.
+    /// Each entry is one circle in the row; unfilled entries persist as empty
+    /// placeholders so undoing a completion never reflows the grid.
+    var streakEntries: [StreakEntry]
 
     /// Extra frontmatter keys we don't recognize — preserved on round-trip.
     var extraFrontmatter: [String: String]
-
-    // MARK: - Streak display floor
-
-    private static let streakFromFmt: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        f.locale = Locale(identifier: "en_US_POSIX")
-        return f
-    }()
-
-    /// Earliest date ever logged. Persisted in frontmatter so removing entries
-    /// never shrinks the visible grid range and circles stay as placeholders.
-    var streakDisplayFrom: Date? {
-        get { extraFrontmatter["streak_from"].flatMap { Self.streakFromFmt.date(from: $0) } }
-        set { extraFrontmatter["streak_from"] = newValue.map { Self.streakFromFmt.string(from: $0) } }
-    }
 
     enum ListType: String, Equatable {
         case list
@@ -51,7 +37,7 @@ struct ItemList: Identifiable, Equatable {
         modifiedDate: Date? = nil,
         items: [ListItem] = [],
         streakCadence: StreakCadence? = nil,
-        streakEntries: [Date] = [],
+        streakEntries: [StreakEntry] = [],
         extraFrontmatter: [String: String] = [:]
     ) {
         self.id = id
@@ -69,46 +55,44 @@ struct ItemList: Identifiable, Equatable {
     var itemCount: Int { items.count }
     var checkedCount: Int { items.filter(\.isChecked).count }
 
-    /// Appends a completion entry (day resolution). Multiple entries may share
-    /// a day — a streak is an append-only sequence of completions, not a
-    /// per-day toggle. Kept newest-first.
-    mutating func addStreakEntry(_ date: Date = Date(), calendar: Calendar = .current) {
-        let day = calendar.startOfDay(for: date)
-        streakEntries.append(day)
-        streakEntries.sort(by: >)
-        if streakDisplayFrom == nil || day < streakDisplayFrom! {
-            streakDisplayFrom = day
-        }
+    /// Number of filled completions — drives the home badge and header count.
+    var streakLoggedCount: Int { streakEntries.filter(\.filled).count }
+
+    /// Whether a filled completion exists for `date`'s calendar day.
+    func isStreakDayLogged(_ date: Date, calendar: Calendar = .current) -> Bool {
+        let target = calendar.startOfDay(for: date)
+        return streakEntries.contains { $0.filled && calendar.startOfDay(for: $0.date) == target }
     }
 
-    /// Removes the entry at `index` (index into `streakEntries` as rendered).
+    /// Inserts a new *filled* completion for `date` (day resolution) at the
+    /// front of its date group, keeping the row newest-first.
+    mutating func addStreakEntry(_ date: Date = Date(), calendar: Calendar = .current) {
+        let day = calendar.startOfDay(for: date)
+        let idx = streakEntries.firstIndex { $0.date < day } ?? streakEntries.count
+        streakEntries.insert(StreakEntry(date: day, filled: true), at: idx)
+    }
+
+    /// Toggles the filled state of the entry at `index` in place. The slot stays
+    /// in the row either way — an unfilled circle is a persistent placeholder.
+    mutating func toggleStreakEntry(at index: Int) {
+        guard streakEntries.indices.contains(index) else { return }
+        streakEntries[index].filled.toggle()
+    }
+
+    /// Permanently removes the entry at `index` (the long-press "Remove" path).
     mutating func removeStreakEntry(at index: Int) {
         guard streakEntries.indices.contains(index) else { return }
         streakEntries.remove(at: index)
     }
 
-    /// Removes all entries for the given calendar day.
-    mutating func removeStreakEntriesForDay(_ day: Date, calendar: Calendar = .current) {
-        let target = calendar.startOfDay(for: day)
-        streakEntries.removeAll { calendar.startOfDay(for: $0) == target }
-    }
-
-    /// Re-dates the entry at `index`, then re-sorts newest-first.
+    /// Re-dates the entry at `index`, preserving its filled state, and
+    /// re-positions it so the row stays newest-first.
     mutating func updateStreakEntry(at index: Int, to date: Date, calendar: Calendar = .current) {
         guard streakEntries.indices.contains(index) else { return }
-        streakEntries[index] = calendar.startOfDay(for: date)
-        streakEntries.sort(by: >)
-    }
-
-    /// Moves all entries for `oldDay` to `newDate` (day resolution).
-    mutating func moveStreakEntry(from oldDay: Date, to newDate: Date, calendar: Calendar = .current) {
-        removeStreakEntriesForDay(oldDay, calendar: calendar)
-        addStreakEntry(newDate, calendar: calendar)
-    }
-
-    func isStreakDayLogged(_ date: Date, calendar: Calendar = .current) -> Bool {
-        let target = calendar.startOfDay(for: date)
-        return streakEntries.contains { calendar.startOfDay(for: $0) == target }
+        var entry = streakEntries.remove(at: index)
+        entry.date = calendar.startOfDay(for: date)
+        let idx = streakEntries.firstIndex { $0.date < entry.date } ?? streakEntries.count
+        streakEntries.insert(entry, at: idx)
     }
 
     /// Convert a slug filename to a display title.
@@ -131,6 +115,14 @@ struct ItemList: Identifiable, Equatable {
             .filter { $0.isLetter || $0.isNumber || $0 == "-" }
         return slug + ".md"
     }
+}
+
+/// One circle in a streak row: a dated completion that can be toggled between
+/// filled (completed) and unfilled (a persistent empty placeholder). New
+/// entries are born filled from the add-button; toggling never removes the slot.
+struct StreakEntry: Equatable {
+    var date: Date   // day resolution (start-of-day)
+    var filled: Bool
 }
 
 /// How often a streak expects to be logged.

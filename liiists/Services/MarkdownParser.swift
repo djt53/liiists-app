@@ -14,7 +14,7 @@ import Foundation
 ///
 /// - [ ] Item one                       (checklist)
 /// - Item two                           (plain list)
-/// - 2026-05-03                         (streak — one ISO date per entry)
+/// - 2026-05-03                         (streak — filled; `- ( ) 2026-05-03` = unfilled)
 /// - 2026-05-22T14:30 — Coffee + bagel  (log — ISO datetime + em-dash + text)
 /// ```
 enum MarkdownParser {
@@ -85,12 +85,13 @@ enum MarkdownParser {
         // Scan for H1 title and items
         var h1Title: String?
         var items: [ListItem] = []
-        var streakEntries: [Date] = []
+        var streakEntries: [StreakEntry] = []
 
         if listType == .streak {
-            // Streak parsing: any `- YYYY-MM-DD` bullet is an entry.
-            // H2 headings and `cadence:` body lines from the legacy
-            // multi-section format are ignored.
+            // Streak parsing: `- YYYY-MM-DD` is a filled entry, `- ( ) YYYY-MM-DD`
+            // an unfilled placeholder. H2 headings and `cadence:` body lines from
+            // the legacy multi-section format are ignored. Legacy files (dates
+            // only) parse as all-filled.
             while index < lines.count {
                 let line = lines[index]
                 let trimmed = line.trimmingCharacters(in: .whitespaces)
@@ -102,13 +103,26 @@ enum MarkdownParser {
                 }
 
                 if trimmed.hasPrefix("- ") {
-                    let dateStr = String(trimmed.dropFirst(2)).trimmingCharacters(in: .whitespaces)
-                    if let date = iso8601Formatter.date(from: dateStr) {
-                        streakEntries.append(date)
+                    var rest = String(trimmed.dropFirst(2)).trimmingCharacters(in: .whitespaces)
+                    var filled = true
+                    if rest.hasPrefix("( )") {
+                        filled = false
+                        rest = String(rest.dropFirst(3)).trimmingCharacters(in: .whitespaces)
+                    }
+                    if let date = iso8601Formatter.date(from: rest) {
+                        streakEntries.append(StreakEntry(date: date, filled: filled))
                     }
                 }
             }
-            streakEntries.sort(by: >)
+            // Stable newest-first: sort by date desc, preserving file order within a day.
+            let indexed: [(offset: Int, element: StreakEntry)] = Array(streakEntries.enumerated())
+            let ordered = indexed.sorted { lhs, rhs in
+                if lhs.element.date != rhs.element.date {
+                    return lhs.element.date > rhs.element.date
+                }
+                return lhs.offset < rhs.offset
+            }
+            streakEntries = ordered.map { $0.element }
         } else if listType == .log {
             // Log parsing: `- <ISO datetime> — <text>` per bullet. First em-dash
             // (U+2014 with spaces on both sides) after the timestamp delimits
@@ -234,8 +248,10 @@ enum MarkdownParser {
         // Body
         switch list.type {
         case .streak:
-            for date in list.streakEntries.sorted(by: >) {
-                lines.append("- \(iso8601Formatter.string(from: date))")
+            // Stored newest-first; `( )` prefix marks an unfilled placeholder.
+            for entry in list.streakEntries {
+                let prefix = entry.filled ? "" : "( ) "
+                lines.append("- \(prefix)\(iso8601Formatter.string(from: entry.date))")
             }
         case .checklist:
             for item in list.items {

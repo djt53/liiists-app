@@ -20,6 +20,8 @@ struct StreakWidgetEntry: TimelineEntry {
     let loggedToday: Bool
     let totalCount: Int
     let filename: String
+    /// Logged-state of the last 7 calendar days, oldest first (last element = today).
+    let recentLogged: [Bool]
 }
 
 // MARK: - Provider
@@ -31,7 +33,8 @@ struct StreakWidgetProvider: AppIntentTimelineProvider {
             listTitle: "Workouts",
             loggedToday: false,
             totalCount: 12,
-            filename: ""
+            filename: "",
+            recentLogged: [true, true, false, true, true, true, false]
         )
     }
 
@@ -54,7 +57,8 @@ struct StreakWidgetProvider: AppIntentTimelineProvider {
                 listTitle: "No list selected",
                 loggedToday: false,
                 totalCount: 0,
-                filename: ""
+                filename: "",
+                recentLogged: Array(repeating: false, count: 7)
             )
         }
 
@@ -65,7 +69,8 @@ struct StreakWidgetProvider: AppIntentTimelineProvider {
                 listTitle: entity.title,
                 loggedToday: false,
                 totalCount: 0,
-                filename: entity.id
+                filename: entity.id,
+                recentLogged: Array(repeating: false, count: 7)
             )
         }
 
@@ -73,9 +78,20 @@ struct StreakWidgetProvider: AppIntentTimelineProvider {
             date: .now,
             listTitle: list.title,
             loggedToday: list.isStreakDayLogged(Date()),
-            totalCount: list.streakEntries.count,
-            filename: list.filename
+            totalCount: list.streakLoggedCount,
+            filename: list.filename,
+            recentLogged: Self.recentLogged(for: list, days: 7)
         )
+    }
+
+    /// Logged-state of the last `days` calendar days, oldest first (last = today).
+    private static func recentLogged(for list: ItemList, days: Int) -> [Bool] {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        return (0..<days).reversed().map { offset in
+            guard let day = cal.date(byAdding: .day, value: -offset, to: today) else { return false }
+            return list.isStreakDayLogged(day)
+        }
     }
 }
 
@@ -116,56 +132,121 @@ struct WidgetLogStreakIntent: AppIntent {
 struct StreakWidgetView: View {
     let entry: StreakWidgetEntry
     @Environment(\.widgetFamily) var family
-    @Environment(\.colorScheme) var colorScheme
+    // The widget background is always forced-dark (see containerBackground), so
+    // resolve every token for dark — not the device appearance, which would
+    // otherwise render white fills as black-on-black in light mode.
+    private let colorScheme: ColorScheme = .dark
+
+    private var titleLabel: some View {
+        Text(entry.listTitle.uppercased())
+            .font(Theme.labelFont(size: 11))
+            .tracking(11 * 0.08)
+            .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
+            .lineLimit(1)
+    }
+
+    private var countLabel: some View {
+        HStack(spacing: 4) {
+            Text("\(entry.totalCount)")
+                .font(Theme.monoFont(size: 14, weight: .bold))
+                .foregroundStyle(Theme.ndTextDisplay.resolve(for: colorScheme))
+            Text("LOGGED")
+                .font(Theme.labelFont(size: 9))
+                .tracking(9 * 0.06)
+                .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
+        }
+    }
+
+    /// Interactive tap-to-log circle — green when today is already logged.
+    private func tapCircle(size: CGFloat) -> some View {
+        Button(intent: WidgetLogStreakIntent(filename: entry.filename)) {
+            ZStack {
+                Circle()
+                    .fill(entry.loggedToday ? Theme.ndSuccess : .clear)
+                Circle()
+                    .strokeBorder(
+                        entry.loggedToday
+                            ? Theme.ndSuccess
+                            : Theme.ndBorderVisible.resolve(for: colorScheme),
+                        lineWidth: entry.loggedToday ? 0 : 1.5
+                    )
+            }
+            .frame(width: size, height: size)
+        }
+        .buttonStyle(.plain)
+        .disabled(entry.filename.isEmpty)
+    }
+
+    /// A read-only history dot — white when that day was logged, else an empty ring.
+    private func historyDot(logged: Bool, size: CGFloat) -> some View {
+        ZStack {
+            Circle()
+                .fill(logged ? Theme.ndTextDisplay.resolve(for: colorScheme) : .clear)
+            Circle()
+                .strokeBorder(
+                    logged ? .clear : Theme.ndBorderVisible.resolve(for: colorScheme),
+                    lineWidth: logged ? 0 : 1
+                )
+        }
+        .frame(width: size, height: size)
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            // Title
-            Text(entry.listTitle.uppercased())
-                .font(Theme.labelFont(size: 11))
-                .tracking(11 * 0.08)
-                .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
-                .lineLimit(1)
-
-            Spacer()
-
-            // Tap-to-log circle
-            HStack {
-                Spacer()
-                Button(intent: WidgetLogStreakIntent(filename: entry.filename)) {
-                    ZStack {
-                        Circle()
-                            .fill(entry.loggedToday ? Theme.ndAccent : .clear)
-                        Circle()
-                            .strokeBorder(
-                                entry.loggedToday
-                                    ? Theme.ndAccent
-                                    : Theme.ndBorderVisible.resolve(for: colorScheme),
-                                lineWidth: entry.loggedToday ? 0 : 1.5
-                            )
-                    }
-                    .frame(width: 56, height: 56)
-                }
-                .buttonStyle(.plain)
-                .disabled(entry.filename.isEmpty)
-                Spacer()
-            }
-
-            Spacer()
-
-            // Total completions
-            HStack(spacing: 4) {
-                Text("\(entry.totalCount)")
-                    .font(Theme.monoFont(size: 14, weight: .bold))
-                    .foregroundStyle(Theme.ndTextDisplay.resolve(for: colorScheme))
-                Text("LOGGED")
-                    .font(Theme.labelFont(size: 9))
-                    .tracking(9 * 0.06)
-                    .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
+        Group {
+            switch family {
+            case .systemMedium:
+                mediumBody
+            default:
+                smallBody
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .widgetURL(URL(string: "liiists://list/\(entry.filename)"))
+    }
+
+    // MARK: Small — single tap-to-log circle
+
+    private var smallBody: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            titleLabel
+            Spacer()
+            HStack {
+                Spacer()
+                tapCircle(size: 56)
+                Spacer()
+            }
+            Spacer()
+            countLabel
+        }
+    }
+
+    // MARK: Medium — last-7-days timeline, today is the tap target
+
+    private var mediumBody: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline) {
+                titleLabel
+                Spacer()
+                countLabel
+            }
+
+            Spacer()
+
+            // Newest-first to match the in-app grid: today (interactive) leads on
+            // the left, history extends to the right into the past.
+            HStack(spacing: 12) {
+                ForEach(Array(entry.recentLogged.reversed().enumerated()), id: \.offset) { i, logged in
+                    if i == 0 {
+                        tapCircle(size: 34)
+                    } else {
+                        historyDot(logged: logged, size: 30)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Spacer()
+        }
     }
 }
 
