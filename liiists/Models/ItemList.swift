@@ -140,17 +140,56 @@ struct StreakEntry: Equatable {
     var filled: Bool
 }
 
-/// How often a streak expects to be logged.
+/// The window a streak is measured in. A streak advances one unit per *met*
+/// period; a period is met when completions within it reach the cadence target.
+enum StreakPeriod: Equatable {
+    case day
+    case week
+}
+
+/// How often a streak expects to be logged. Every cadence reduces to a
+/// `(period, target)` pair plus a day-eligibility rule:
+/// - `daily`         → (day, 1)
+/// - `weekdays`      → (day, 1), Mon–Fri only
+/// - `timesPerDay(n)`→ (day, n)
+/// - `timesPerWeek(n)`→ (week, n)
 enum StreakCadence: Equatable {
     case daily
     case weekdays
-    case threePerWeek
+    case timesPerDay(Int)
+    case timesPerWeek(Int)
 
-    /// Parse from markdown string: "daily", "weekdays", "3/week"
+    /// The measurement window this cadence advances in.
+    var period: StreakPeriod {
+        switch self {
+        case .daily, .weekdays, .timesPerDay: return .day
+        case .timesPerWeek: return .week
+        }
+    }
+
+    /// Completions required within one period for it to count as "met".
+    var target: Int {
+        switch self {
+        case .daily, .weekdays: return 1
+        case .timesPerDay(let n): return max(1, n)
+        case .timesPerWeek(let n): return max(1, n)
+        }
+    }
+
+    /// Parse from markdown string: "daily", "weekdays", "N/day", "N/week".
+    /// Legacy "3/week" still parses. "1/day" normalizes to `.daily`.
     static func from(_ string: String) -> StreakCadence {
         let trimmed = string.trimmingCharacters(in: .whitespaces).lowercased()
+        if trimmed == "daily" { return .daily }
         if trimmed == "weekdays" { return .weekdays }
-        if trimmed == "3/week" { return .threePerWeek }
+        if trimmed.hasSuffix("/day") {
+            let n = Int(trimmed.dropLast(4)) ?? 1
+            return n <= 1 ? .daily : .timesPerDay(n)
+        }
+        if trimmed.hasSuffix("/week") {
+            let n = Int(trimmed.dropLast(5)) ?? 1
+            return .timesPerWeek(max(1, n))
+        }
         return .daily
     }
 
@@ -159,7 +198,8 @@ enum StreakCadence: Equatable {
         switch self {
         case .daily: return "daily"
         case .weekdays: return "weekdays"
-        case .threePerWeek: return "3/week"
+        case .timesPerDay(let n): return "\(max(1, n))/day"
+        case .timesPerWeek(let n): return "\(max(1, n))/week"
         }
     }
 
@@ -168,16 +208,18 @@ enum StreakCadence: Equatable {
         switch self {
         case .daily: return "Daily"
         case .weekdays: return "Weekdays"
-        case .threePerWeek: return "3x / week"
+        case .timesPerDay(let n): return "\(max(1, n))x / day"
+        case .timesPerWeek(let n): return "\(max(1, n))x / week"
         }
     }
 
-    /// Weekly target count for progress display.
+    /// Target number of completions in one week — drives the "this week" ring.
     var weeklyTarget: Int {
         switch self {
         case .daily: return 7
         case .weekdays: return 5
-        case .threePerWeek: return 3
+        case .timesPerDay(let n): return 7 * max(1, n)
+        case .timesPerWeek(let n): return max(1, n)
         }
     }
 
@@ -185,11 +227,11 @@ enum StreakCadence: Equatable {
     /// (Used to decide whether to render a circle for a past day.)
     func includesDay(_ date: Date, calendar: Calendar = .current) -> Bool {
         switch self {
-        case .daily, .threePerWeek:
-            return true
         case .weekdays:
             let weekday = calendar.component(.weekday, from: date)
             return weekday >= 2 && weekday <= 6 // Mon-Fri
+        case .daily, .timesPerDay, .timesPerWeek:
+            return true
         }
     }
 }

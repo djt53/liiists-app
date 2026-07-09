@@ -8,7 +8,7 @@ import Foundation
 /// title: My List
 /// type: checklist              (or list, streak, log)
 /// created: 2026-03-26
-/// cadence: daily               (only for streak)
+/// cadence: daily               (streak only: daily | weekdays | N/day | N/week)
 /// ---
 /// # Optional H1 Title
 ///

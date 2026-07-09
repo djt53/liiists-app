@@ -5,11 +5,22 @@ struct StreakStatsResult: Equatable {
     let currentStreak: Int
     let longestStreak: Int
     let totalCompletions: Int
+    /// Completions logged in the current (ISO Monday-start) week.
     let thisWeekCount: Int
+    /// Target completions for one week, per the cadence.
     let thisWeekTarget: Int
 }
 
 /// Pure functions for computing streak statistics.
+///
+/// All cadences reduce to a `(period, target)` model: a *period* (day or week)
+/// is **met** when the number of completions falling inside it reaches the
+/// cadence target. A streak is the run of consecutive met periods; the current,
+/// still-in-progress period never *breaks* a streak — it just hasn't counted yet.
+///
+/// `entries` is the list of filled-completion dates and **may contain duplicates**
+/// — multiple completions on the same day all count toward that day's total,
+/// which is what makes `timesPerDay(n)` work.
 enum StreakStats {
 
     private static let calendar: Calendar = {
@@ -25,17 +36,28 @@ enum StreakStats {
     ) -> StreakStatsResult {
         let cal = Self.calendar
         let todayStart = cal.startOfDay(for: today)
-        let entrySet = Set(entries.map { cal.startOfDay(for: $0) })
 
-        let currentStreak = computeCurrentStreak(
-            entries: entrySet, cadence: cadence, from: todayStart, calendar: cal
-        )
-        let longestStreak = computeLongestStreak(
-            entries: entrySet, cadence: cadence, calendar: cal
-        )
+        // Completions counted per day — duplicates on the same day accumulate.
+        var perDay: [Date: Int] = [:]
+        for date in entries {
+            perDay[cal.startOfDay(for: date), default: 0] += 1
+        }
+
+        let currentStreak: Int
+        let longestStreak: Int
+        switch cadence.period {
+        case .day:
+            currentStreak = currentDayStreak(perDay: perDay, cadence: cadence, today: todayStart, cal: cal)
+            longestStreak = longestDayStreak(perDay: perDay, cadence: cadence, cal: cal)
+        case .week:
+            currentStreak = currentWeekStreak(perDay: perDay, target: cadence.target, today: todayStart, cal: cal)
+            longestStreak = longestWeekStreak(perDay: perDay, target: cadence.target, cal: cal)
+        }
 
         let weekStart = cal.dateInterval(of: .weekOfYear, for: todayStart)?.start ?? todayStart
-        let thisWeekCount = entrySet.filter { $0 >= weekStart && $0 <= todayStart }.count
+        let thisWeekCount = perDay
+            .filter { $0.key >= weekStart && $0.key <= todayStart }
+            .values.reduce(0, +)
 
         return StreakStatsResult(
             currentStreak: currentStreak,
@@ -47,7 +69,7 @@ enum StreakStats {
     }
 
     /// All cadence-eligible days from `start` to `today`, newest first.
-    /// For weekdays cadence, weekends are filtered out.
+    /// For the `weekdays` cadence, weekends are filtered out.
     static func eligibleDays(
         from start: Date,
         cadence: StreakCadence,
@@ -70,157 +92,119 @@ enum StreakStats {
         return days
     }
 
-    // MARK: - Private
+    // MARK: - Day-period streaks
 
-    private static func computeCurrentStreak(
-        entries: Set<Date>, cadence: StreakCadence, from today: Date, calendar: Calendar
+    private static func currentDayStreak(
+        perDay: [Date: Int], cadence: StreakCadence, today: Date, cal: Calendar
     ) -> Int {
-        switch cadence {
-        case .daily:
-            return countConsecutiveDays(entries: entries, from: today, calendar: calendar) { _ in true }
+        let target = cadence.target
+        func eligible(_ d: Date) -> Bool { cadence.includesDay(d, calendar: cal) }
+        func met(_ d: Date) -> Bool { (perDay[d] ?? 0) >= target }
 
-        case .weekdays:
-            return countConsecutiveDays(entries: entries, from: today, calendar: calendar) { date in
-                let wd = calendar.component(.weekday, from: date)
-                return wd >= 2 && wd <= 6
-            }
-
-        case .threePerWeek:
-            return countConsecutiveWeeks(entries: entries, from: today, target: 3, calendar: calendar)
-        }
-    }
-
-    private static func countConsecutiveDays(
-        entries: Set<Date>, from today: Date, calendar: Calendar, isExpected: (Date) -> Bool
-    ) -> Int {
         var streak = 0
         var day = today
 
-        // If today is expected but not yet logged, start from yesterday
-        // (the day isn't over yet — don't penalize for not logging yet today)
-        if isExpected(day) && !entries.contains(day) {
-            guard let yesterday = calendar.date(byAdding: .day, value: -1, to: day) else { return 0 }
-            day = yesterday
-        }
-
-        while true {
-            if isExpected(day) {
-                if entries.contains(day) {
-                    streak += 1
-                } else {
-                    break
-                }
-            }
-            guard let prev = calendar.date(byAdding: .day, value: -1, to: day) else { break }
+        // If today is eligible but not yet met, start from the previous day —
+        // today's period isn't over, so it can't break the streak yet.
+        if eligible(day) && !met(day) {
+            guard let prev = cal.date(byAdding: .day, value: -1, to: day) else { return 0 }
             day = prev
         }
 
+        while true {
+            if eligible(day) {
+                if met(day) { streak += 1 } else { break }
+            }
+            guard let prev = cal.date(byAdding: .day, value: -1, to: day) else { break }
+            day = prev
+        }
         return streak
     }
 
-    private static func countConsecutiveWeeks(
-        entries: Set<Date>, from today: Date, target: Int, calendar: Calendar
+    private static func longestDayStreak(
+        perDay: [Date: Int], cadence: StreakCadence, cal: Calendar
+    ) -> Int {
+        guard let first = perDay.keys.min(), let last = perDay.keys.max() else { return 0 }
+        let target = cadence.target
+
+        var longest = 0
+        var current = 0
+        var day = first
+        while day <= last {
+            if cadence.includesDay(day, calendar: cal) {
+                if (perDay[day] ?? 0) >= target {
+                    current += 1
+                    longest = max(longest, current)
+                } else {
+                    current = 0
+                }
+            }
+            guard let next = cal.date(byAdding: .day, value: 1, to: day) else { break }
+            day = next
+        }
+        return longest
+    }
+
+    // MARK: - Week-period streaks
+
+    private static func weekCompletions(
+        _ interval: DateInterval, perDay: [Date: Int]
+    ) -> Int {
+        perDay.filter { $0.key >= interval.start && $0.key < interval.end }
+            .values.reduce(0, +)
+    }
+
+    private static func currentWeekStreak(
+        perDay: [Date: Int], target: Int, today: Date, cal: Calendar
     ) -> Int {
         var streak = 0
+        guard var interval = cal.dateInterval(of: .weekOfYear, for: today) else { return 0 }
 
-        guard var weekInterval = calendar.dateInterval(of: .weekOfYear, for: today) else { return 0 }
-
-        let currentWeekCount = entries.filter {
-            $0 >= weekInterval.start && $0 < weekInterval.end
-        }.count
-
-        if currentWeekCount >= target {
+        if weekCompletions(interval, perDay: perDay) >= target {
             streak += 1
         }
-        // Otherwise: week in progress — don't count, but also don't break.
+        // Otherwise: week in progress — don't count, but don't break either.
 
-        guard let prevWeekStart = calendar.date(byAdding: .weekOfYear, value: -1, to: weekInterval.start),
-              let prevInterval = calendar.dateInterval(of: .weekOfYear, for: prevWeekStart) else {
+        guard let prevStart = cal.date(byAdding: .weekOfYear, value: -1, to: interval.start),
+              let prev = cal.dateInterval(of: .weekOfYear, for: prevStart) else {
             return streak
         }
-        weekInterval = prevInterval
+        interval = prev
 
         while true {
-            let weekCount = entries.filter {
-                $0 >= weekInterval.start && $0 < weekInterval.end
-            }.count
-
-            if weekCount >= target {
+            if weekCompletions(interval, perDay: perDay) >= target {
                 streak += 1
             } else {
                 break
             }
-
-            guard let prevStart = calendar.date(byAdding: .weekOfYear, value: -1, to: weekInterval.start),
-                  let prev = calendar.dateInterval(of: .weekOfYear, for: prevStart) else { break }
-            weekInterval = prev
+            guard let ps = cal.date(byAdding: .weekOfYear, value: -1, to: interval.start),
+                  let p = cal.dateInterval(of: .weekOfYear, for: ps) else { break }
+            interval = p
         }
-
         return streak
     }
 
-    private static func computeLongestStreak(
-        entries: Set<Date>, cadence: StreakCadence, calendar: Calendar
+    private static func longestWeekStreak(
+        perDay: [Date: Int], target: Int, cal: Calendar
     ) -> Int {
-        guard !entries.isEmpty else { return 0 }
+        guard let first = perDay.keys.min(), let last = perDay.keys.max() else { return 0 }
 
-        let sorted = entries.sorted()
-        guard let first = sorted.first, let last = sorted.last else { return 0 }
-
-        switch cadence {
-        case .daily:
-            return longestConsecutiveDays(sorted: sorted, calendar: calendar) { _ in true }
-
-        case .weekdays:
-            return longestConsecutiveDays(sorted: sorted, calendar: calendar) { date in
-                let wd = calendar.component(.weekday, from: date)
-                return wd >= 2 && wd <= 6
-            }
-
-        case .threePerWeek:
-            var longest = 0
-            var current = 0
-            guard var weekInterval = calendar.dateInterval(of: .weekOfYear, for: first) else { return 0 }
-            let endWeek = calendar.dateInterval(of: .weekOfYear, for: last)?.end ?? last
-
-            while weekInterval.start <= endWeek {
-                let count = entries.filter { $0 >= weekInterval.start && $0 < weekInterval.end }.count
-                if count >= 3 {
-                    current += 1
-                    longest = max(longest, current)
-                } else {
-                    current = 0
-                }
-                guard let nextStart = calendar.date(byAdding: .weekOfYear, value: 1, to: weekInterval.start),
-                      let next = calendar.dateInterval(of: .weekOfYear, for: nextStart) else { break }
-                weekInterval = next
-            }
-            return longest
-        }
-    }
-
-    private static func longestConsecutiveDays(
-        sorted: [Date], calendar: Calendar, isExpected: (Date) -> Bool
-    ) -> Int {
-        guard let first = sorted.first, let last = sorted.last else { return 0 }
-
-        let entrySet = Set(sorted)
         var longest = 0
         var current = 0
-        var day = first
+        guard var interval = cal.dateInterval(of: .weekOfYear, for: first) else { return 0 }
+        let endWeekEnd = cal.dateInterval(of: .weekOfYear, for: last)?.end ?? last
 
-        while day <= last {
-            if isExpected(day) {
-                if entrySet.contains(day) {
-                    current += 1
-                    longest = max(longest, current)
-                } else {
-                    current = 0
-                }
+        while interval.start <= endWeekEnd {
+            if weekCompletions(interval, perDay: perDay) >= target {
+                current += 1
+                longest = max(longest, current)
+            } else {
+                current = 0
             }
-            day = calendar.date(byAdding: .day, value: 1, to: day)!
+            guard let ns = cal.date(byAdding: .weekOfYear, value: 1, to: interval.start),
+                  let n = cal.dateInterval(of: .weekOfYear, for: ns) else { break }
+            interval = n
         }
-
         return longest
     }
 }
