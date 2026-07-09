@@ -117,7 +117,7 @@ struct StreakListView: View {
                 ScrollView {
                     Group {
                         if weekView {
-                            weekGrid
+                            weekGrid(circleSize: weekCircleSize(viewport: geo.size))
                         } else {
                             circleGrid(circleSize: continuousCircleSize(viewport: geo.size))
                         }
@@ -361,6 +361,30 @@ struct StreakListView: View {
         return Self.minCircleSize
     }
 
+    /// The dot size for the week grid: standard 30pt, or — when "Show all
+    /// entries" is on — the largest size at which every week row fits the
+    /// viewport height (the week grid is 7-wide, so only the row count varies).
+    private func weekCircleSize(viewport: CGSize) -> CGFloat {
+        guard showAll else { return Self.circleSize }
+        let rows = weekRows.count
+        guard rows > 0 else { return Self.circleSize }
+
+        let availH = viewport.height - Theme.spaceLG - Theme.space2XL
+        guard availH > 0 else { return Self.minCircleSize }
+        // The weekday header row (~14pt) sits above the week rows; each week row
+        // costs (size + spacing). Gutter labels are hidden in this mode.
+        let headerAllowance: CGFloat = 16
+
+        var size = Self.circleSize
+        while size > Self.minCircleSize {
+            let s = spacing(for: size)
+            let neededH = headerAllowance + CGFloat(rows) * (size + s)
+            if neededH <= availH { return size }
+            size -= 1
+        }
+        return Self.minCircleSize
+    }
+
     private func circleGrid(circleSize: CGFloat) -> some View {
         let gridSpacing = spacing(for: circleSize)
         let columns = [
@@ -562,10 +586,12 @@ struct StreakListView: View {
     /// A dot that fills proportionally toward `target` — solid once met. Used in
     /// the week grid for count-based cadences (X/day) so a 2-of-3 day reads as
     /// two-thirds of an arc rather than a binary on/off.
-    private func progressCircle(count: Int, target: Int, isToday: Bool) -> some View {
+    private func progressCircle(count: Int, target: Int, isToday: Bool, size: CGFloat = Self.circleSize) -> some View {
         let fraction = target > 0 ? min(1, Double(count) / Double(target)) : 0
         let met = count >= target
         let accent = Theme.ndTextDisplay.resolve(for: colorScheme)
+        // Scale the arc weight down with the dot so it doesn't swamp small cells.
+        let arcWidth = max(1, size / 12)
         return ZStack {
             if met {
                 Circle().fill(accent)
@@ -573,12 +599,12 @@ struct StreakListView: View {
                 Circle().strokeBorder(accent.opacity(0.25), lineWidth: isToday ? 1.5 : 1)
                 Circle()
                     .trim(from: 0, to: fraction)
-                    .stroke(accent, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                    .stroke(accent, style: StrokeStyle(lineWidth: arcWidth, lineCap: .round))
                     .rotationEffect(.degrees(-90))
-                    .padding(1.5)
+                    .padding(arcWidth * 0.6)
             }
         }
-        .frame(width: Self.circleSize, height: Self.circleSize)
+        .frame(width: size, height: size)
     }
 
     // MARK: - Week grid (Monday-aligned)
@@ -653,13 +679,17 @@ struct StreakListView: View {
         row.containsToday ? "THIS WK" : Self.shortDateFmt.string(from: row.anchor).uppercased()
     }
 
-    private var weekGrid: some View {
+    private func weekGrid(circleSize: CGFloat) -> some View {
+        let gridSpacing = spacing(for: circleSize)
         // Fixed label column + 7 flexible day columns, so the circles spread
         // across the full width instead of clustering at intrinsic size.
         let columns = [GridItem(.fixed(Self.weekGutter), alignment: .leading)]
-            + Array(repeating: GridItem(.flexible(), spacing: Self.circleSpacing), count: 7)
+            + Array(repeating: GridItem(.flexible(), spacing: gridSpacing), count: 7)
+        // "Show all" compresses every week onto one screen — drop the per-week
+        // gutter labels so row height is driven by the (shrunk) dots alone.
+        let showLabels = !showAll
 
-        return LazyVGrid(columns: columns, alignment: .center, spacing: Self.circleSpacing) {
+        return LazyVGrid(columns: columns, alignment: .center, spacing: gridSpacing) {
             // Weekday header
             Color.clear.frame(height: 1)
             ForEach(Array(Self.weekdayInitials.enumerated()), id: \.offset) { _, initial in
@@ -670,7 +700,7 @@ struct StreakListView: View {
             }
             // Week rows, newest first — each labeled with its week-of date
             ForEach(weekRows) { week in
-                Text(weekLabel(for: week))
+                Text(showLabels ? weekLabel(for: week) : "")
                     .font(Theme.labelFont(size: 8))
                     .tracking(8 * 0.04)
                     .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
@@ -678,17 +708,17 @@ struct StreakListView: View {
                     .minimumScaleFactor(0.7)
                     .frame(width: Self.weekGutter, alignment: .leading)
                 ForEach(Array(week.cells.enumerated()), id: \.offset) { _, cell in
-                    weekCell(cell)
+                    weekCell(cell, size: circleSize)
                 }
             }
         }
     }
 
     @ViewBuilder
-    private func weekCell(_ cell: WeekCell) -> some View {
+    private func weekCell(_ cell: WeekCell, size: CGFloat = Self.circleSize) -> some View {
         switch cell {
         case .blank:
-            Color.clear.frame(width: Self.circleSize, height: Self.circleSize)
+            Color.clear.frame(width: size, height: size)
 
         case let .day(date):
             let isToday = Calendar.current.isDateInToday(date)
@@ -706,7 +736,7 @@ struct StreakListView: View {
                     Theme.mediumHaptic()
                     Analytics.streakLogged(listTitle: list.title)
                 } label: {
-                    progressCircle(count: count, target: target, isToday: isToday)
+                    progressCircle(count: count, target: target, isToday: isToday, size: size)
                 }
                 .buttonStyle(.plain)
                 .contextMenu {
@@ -738,7 +768,8 @@ struct StreakListView: View {
                     circleShape(
                         fill: logged ? Theme.ndTextDisplay.resolve(for: colorScheme) : .clear,
                         stroke: logged ? .clear : Theme.ndTextDisplay.resolve(for: colorScheme),
-                        lineWidth: logged ? 0 : (isToday ? 1.5 : 1)
+                        lineWidth: logged ? 0 : (isToday ? 1.5 : 1),
+                        size: size
                     )
                 }
                 .buttonStyle(.plain)
@@ -792,17 +823,15 @@ struct StreakListView: View {
                     systemImage: weekView ? "square.grid.3x1.below.line.grid.1x2" : "calendar"
                 )
             }
-            if !weekView {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.28)) { showAll.toggle() }
-                } label: {
-                    Label(
-                        showAll ? "Standard size" : "Show all entries",
-                        systemImage: showAll
-                            ? "arrow.up.left.and.arrow.down.right"
-                            : "arrow.down.right.and.arrow.up.left"
-                    )
-                }
+            Button {
+                withAnimation(.easeInOut(duration: 0.28)) { showAll.toggle() }
+            } label: {
+                Label(
+                    showAll ? "Standard size" : "Show all entries",
+                    systemImage: showAll
+                        ? "arrow.up.left.and.arrow.down.right"
+                        : "arrow.down.right.and.arrow.up.left"
+                )
             }
             Divider()
             Button {
