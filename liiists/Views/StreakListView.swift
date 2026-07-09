@@ -19,6 +19,7 @@ struct StreakListView: View {
     @State private var showRename = false
     @State private var renameText = ""
     @State private var showDeleteConfirm = false
+    @State private var showCadenceSheet = false
     @State private var editingIndex: Int?
     @State private var pendingDate = Date()
     /// When true, render a Monday-aligned week grid instead of the flow timeline.
@@ -163,6 +164,17 @@ struct StreakListView: View {
                 }
             )
             .presentationDetents([.fraction(0.7)])
+            .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showCadenceSheet) {
+            StreakCadenceEditSheet(
+                cadence: Binding(
+                    get: { list.streakCadence ?? .daily },
+                    set: { list.streakCadence = $0 } // onChange(of: list) persists
+                ),
+                onDone: { showCadenceSheet = false }
+            )
+            .presentationDetents([.medium])
             .presentationDragIndicator(.visible)
         }
         .enableSwipeBack()
@@ -534,6 +546,12 @@ struct StreakListView: View {
             }
             Divider()
             Button {
+                showCadenceSheet = true
+            } label: {
+                Label("Cadence: \(list.streakCadence?.displayLabel ?? "Daily")", systemImage: "repeat")
+            }
+            Divider()
+            Button {
                 renameText = list.title
                 showRename = true
             } label: {
@@ -603,6 +621,45 @@ struct StreakDateEditSheet: View {
             .datePickerStyle(.graphical)
             .labelsHidden()
             .padding(.horizontal, Theme.spaceMD)
+
+            Spacer()
+        }
+        .background(Theme.ndSurface.resolve(for: colorScheme))
+    }
+}
+
+// MARK: - Cadence Edit Sheet
+
+/// Change an existing streak's cadence. Edits apply live (the parent's
+/// `onChange(of: list)` persists), so DONE just dismisses.
+struct StreakCadenceEditSheet: View {
+    @Binding var cadence: StreakCadence
+    var onDone: () -> Void
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Spacer()
+                Button(action: onDone) {
+                    Text("DONE")
+                        .font(Theme.labelFont(size: 13))
+                        .textCase(.uppercase)
+                        .tracking(13 * 0.06)
+                        .foregroundStyle(Theme.ndBlack.resolve(for: colorScheme))
+                        .padding(.horizontal, Theme.spaceLG)
+                        .padding(.vertical, Theme.spaceSM)
+                        .background(Theme.ndTextPrimary.resolve(for: colorScheme))
+                        .clipShape(Capsule())
+                }
+            }
+            .padding(.horizontal, Theme.spaceMD)
+            .padding(.top, Theme.spaceLG)
+
+            Spacer().frame(height: Theme.space2XL)
+
+            CadencePicker(cadence: $cadence)
+                .padding(.horizontal, Theme.spaceMD)
 
             Spacer()
         }

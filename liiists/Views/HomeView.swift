@@ -48,6 +48,7 @@ struct HomeView: View {
     @State private var showSettings = false
     @State private var newListTitle = ""
     @State private var newListType: ItemList.ListType = .list
+    @State private var newListCadence: StreakCadence = .daily
     @State private var searchText = ""
     @State private var showSearch = false
     @State private var animatingCharIndex: Int? = nil
@@ -157,16 +158,19 @@ struct HomeView: View {
                 NewListSheet(
                     title: $newListTitle,
                     listType: $newListType,
+                    cadence: $newListCadence,
                     onCreate: {
                         let trimmed = newListTitle.trimmingCharacters(in: .whitespaces)
                         guard !trimmed.isEmpty else { return }
                         let newList = store.create(
                             title: trimmed,
-                            type: newListType
+                            type: newListType,
+                            cadence: newListType == .streak ? newListCadence : nil
                         )
                         Theme.mediumHaptic()
                         newListTitle = ""
                         newListType = .list
+                        newListCadence = .daily
                         showNewList = false
                         // Navigate to the new list. Streak lists don't need
                         // the add field — they show the first circle ready to tap.
@@ -176,10 +180,11 @@ struct HomeView: View {
                         }
                     },
                     onCancel: {
+                        newListCadence = .daily
                         showNewList = false
                     }
                 )
-                .presentationDetents([.medium])
+                .presentationDetents(newListType == .streak ? [.large] : [.medium])
                 .presentationDragIndicator(.visible)
             }
         }
@@ -480,6 +485,7 @@ struct ListRow: View {
 struct NewListSheet: View {
     @Binding var title: String
     @Binding var listType: ItemList.ListType
+    @Binding var cadence: StreakCadence
     var onCreate: () -> Void
     var onCancel: () -> Void
     @Environment(\.colorScheme) private var colorScheme
@@ -496,6 +502,7 @@ struct NewListSheet: View {
                 Button {
                     title = ""
                     listType = .list
+                    cadence = .daily
                     onCancel()
                 } label: {
                     Text("CANCEL")
@@ -586,6 +593,12 @@ struct NewListSheet: View {
                 .clipShape(RoundedRectangle(cornerRadius: Theme.cornerRadius))
             }
             .padding(.horizontal, Theme.spaceMD)
+
+            if listType == .streak {
+                Spacer().frame(height: Theme.spaceXL)
+                CadencePicker(cadence: $cadence)
+                    .padding(.horizontal, Theme.spaceMD)
+            }
 
             Spacer()
         }
