@@ -17,11 +17,20 @@ struct StreakWidgetIntent: WidgetConfigurationIntent {
 struct StreakWidgetEntry: TimelineEntry {
     let date: Date
     let listTitle: String
-    let loggedToday: Bool
     let totalCount: Int
+    let currentStreak: Int
+    /// True for week-period cadences — drives the streak unit label.
+    let isWeekly: Bool
+    /// Completions required for a single day-dot to read as "met". For day-based
+    /// cadences this is the cadence target (X/day); for weekly cadences it's 1,
+    /// so the daily dots stay binary while the streak counts weeks.
+    let dotTarget: Int
     let filename: String
-    /// Logged-state of the last 7 calendar days, oldest first (last element = today).
-    let recentLogged: [Bool]
+    /// Completion counts for the last 7 calendar days, oldest first (last = today).
+    let recentCounts: [Int]
+
+    var todayCount: Int { recentCounts.last ?? 0 }
+    var loggedToday: Bool { todayCount >= dotTarget }
 }
 
 // MARK: - Provider
@@ -31,10 +40,12 @@ struct StreakWidgetProvider: AppIntentTimelineProvider {
         StreakWidgetEntry(
             date: .now,
             listTitle: "Workouts",
-            loggedToday: false,
             totalCount: 12,
+            currentStreak: 5,
+            isWeekly: false,
+            dotTarget: 1,
             filename: "",
-            recentLogged: [true, true, false, true, true, true, false]
+            recentCounts: [1, 1, 0, 1, 1, 1, 0]
         )
     }
 
@@ -52,45 +63,55 @@ struct StreakWidgetProvider: AppIntentTimelineProvider {
 
     private func loadEntry(for configuration: StreakWidgetIntent) -> StreakWidgetEntry {
         guard let entity = configuration.list else {
-            return StreakWidgetEntry(
-                date: .now,
-                listTitle: "No list selected",
-                loggedToday: false,
-                totalCount: 0,
-                filename: "",
-                recentLogged: Array(repeating: false, count: 7)
-            )
+            return Self.emptyEntry(title: "No list selected", filename: "")
         }
 
         let store = IntentListStore()
         guard let list = store.find(name: entity.title), list.type == .streak else {
-            return StreakWidgetEntry(
-                date: .now,
-                listTitle: entity.title,
-                loggedToday: false,
-                totalCount: 0,
-                filename: entity.id,
-                recentLogged: Array(repeating: false, count: 7)
-            )
+            return Self.emptyEntry(title: entity.title, filename: entity.id)
         }
 
+        let cadence = list.streakCadence ?? .daily
+        let stats = StreakStats.compute(
+            entries: list.streakEntries.filter(\.filled).map(\.date),
+            cadence: cadence
+        )
         return StreakWidgetEntry(
             date: .now,
             listTitle: list.title,
-            loggedToday: list.isStreakDayLogged(Date()),
             totalCount: list.streakLoggedCount,
+            currentStreak: stats.currentStreak,
+            isWeekly: cadence.period == .week,
+            dotTarget: cadence.period == .day ? cadence.target : 1,
             filename: list.filename,
-            recentLogged: Self.recentLogged(for: list, days: 7)
+            recentCounts: Self.recentCounts(for: list, days: 7)
         )
     }
 
-    /// Logged-state of the last `days` calendar days, oldest first (last = today).
-    private static func recentLogged(for list: ItemList, days: Int) -> [Bool] {
+    private static func emptyEntry(title: String, filename: String) -> StreakWidgetEntry {
+        StreakWidgetEntry(
+            date: .now,
+            listTitle: title,
+            totalCount: 0,
+            currentStreak: 0,
+            isWeekly: false,
+            dotTarget: 1,
+            filename: filename,
+            recentCounts: Array(repeating: 0, count: 7)
+        )
+    }
+
+    /// Completion counts for the last `days` calendar days, oldest first (last = today).
+    private static func recentCounts(for list: ItemList, days: Int) -> [Int] {
         let cal = Calendar.current
         let today = cal.startOfDay(for: Date())
+        var perDay: [Date: Int] = [:]
+        for entry in list.streakEntries where entry.filled {
+            perDay[cal.startOfDay(for: entry.date), default: 0] += 1
+        }
         return (0..<days).reversed().map { offset in
-            guard let day = cal.date(byAdding: .day, value: -offset, to: today) else { return false }
-            return list.isStreakDayLogged(day)
+            guard let day = cal.date(byAdding: .day, value: -offset, to: today) else { return 0 }
+            return perDay[day] ?? 0
         }
     }
 }
@@ -145,31 +166,40 @@ struct StreakWidgetView: View {
             .lineLimit(1)
     }
 
-    private var countLabel: some View {
+    /// Current streak — the headline glance value, unit-aware (day vs week).
+    private var streakLabel: some View {
         HStack(spacing: 4) {
-            Text("\(entry.totalCount)")
+            Text("\(entry.currentStreak)")
                 .font(Theme.monoFont(size: 14, weight: .bold))
                 .foregroundStyle(Theme.ndTextDisplay.resolve(for: colorScheme))
-            Text("LOGGED")
+            Text(entry.isWeekly ? "WK STREAK" : "DAY STREAK")
                 .font(Theme.labelFont(size: 9))
                 .tracking(9 * 0.06)
                 .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
         }
     }
 
-    /// Interactive tap-to-log circle — green when today is already logged.
+    /// Interactive tap-to-log circle. Solid green once today's target is met;
+    /// for X/day cadences an in-progress day shows a partial arc.
     private func tapCircle(size: CGFloat) -> some View {
-        Button(intent: WidgetLogStreakIntent(filename: entry.filename)) {
+        let count = entry.todayCount
+        let target = entry.dotTarget
+        let met = count >= target
+        let fraction = target > 0 ? min(1, Double(count) / Double(target)) : 0
+        return Button(intent: WidgetLogStreakIntent(filename: entry.filename)) {
             ZStack {
-                Circle()
-                    .fill(entry.loggedToday ? Theme.ndSuccess : .clear)
-                Circle()
-                    .strokeBorder(
-                        entry.loggedToday
-                            ? Theme.ndSuccess
-                            : Theme.ndBorderVisible.resolve(for: colorScheme),
-                        lineWidth: entry.loggedToday ? 0 : 1.5
-                    )
+                if met {
+                    Circle().fill(Theme.ndSuccess)
+                } else {
+                    Circle().strokeBorder(Theme.ndBorderVisible.resolve(for: colorScheme), lineWidth: 1.5)
+                    if target > 1 {
+                        Circle()
+                            .trim(from: 0, to: fraction)
+                            .stroke(Theme.ndSuccess, style: StrokeStyle(lineWidth: size * 0.1, lineCap: .round))
+                            .rotationEffect(.degrees(-90))
+                            .padding(size * 0.07)
+                    }
+                }
             }
             .frame(width: size, height: size)
         }
@@ -177,16 +207,26 @@ struct StreakWidgetView: View {
         .disabled(entry.filename.isEmpty)
     }
 
-    /// A read-only history dot — white when that day was logged, else an empty ring.
-    private func historyDot(logged: Bool, size: CGFloat) -> some View {
-        ZStack {
-            Circle()
-                .fill(logged ? Theme.ndTextDisplay.resolve(for: colorScheme) : .clear)
-            Circle()
-                .strokeBorder(
-                    logged ? .clear : Theme.ndBorderVisible.resolve(for: colorScheme),
-                    lineWidth: logged ? 0 : 1
-                )
+    /// A read-only history dot — solid white when that day met target, a partial
+    /// arc for count-based cadences in progress, else an empty ring.
+    private func historyDot(count: Int, size: CGFloat) -> some View {
+        let target = entry.dotTarget
+        let met = count >= target
+        let fraction = target > 0 ? min(1, Double(count) / Double(target)) : 0
+        return ZStack {
+            if met {
+                Circle().fill(Theme.ndTextDisplay.resolve(for: colorScheme))
+            } else {
+                Circle().strokeBorder(Theme.ndBorderVisible.resolve(for: colorScheme), lineWidth: 1)
+                if target > 1 {
+                    Circle()
+                        .trim(from: 0, to: fraction)
+                        .stroke(Theme.ndTextDisplay.resolve(for: colorScheme),
+                                style: StrokeStyle(lineWidth: size * 0.1, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                        .padding(size * 0.07)
+                }
+            }
         }
         .frame(width: size, height: size)
     }
@@ -216,7 +256,7 @@ struct StreakWidgetView: View {
                 Spacer()
             }
             Spacer()
-            countLabel
+            streakLabel
         }
     }
 
@@ -227,7 +267,7 @@ struct StreakWidgetView: View {
             HStack(alignment: .firstTextBaseline) {
                 titleLabel
                 Spacer()
-                countLabel
+                streakLabel
             }
 
             Spacer()
@@ -235,11 +275,11 @@ struct StreakWidgetView: View {
             // Newest-first to match the in-app grid: today (interactive) leads on
             // the left, history extends to the right into the past.
             HStack(spacing: 12) {
-                ForEach(Array(entry.recentLogged.reversed().enumerated()), id: \.offset) { i, logged in
+                ForEach(Array(entry.recentCounts.reversed().enumerated()), id: \.offset) { i, count in
                     if i == 0 {
                         tapCircle(size: 34)
                     } else {
-                        historyDot(logged: logged, size: 30)
+                        historyDot(count: count, size: 30)
                     }
                 }
             }

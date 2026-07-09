@@ -20,6 +20,11 @@ struct StreakListView: View {
     @State private var renameText = ""
     @State private var showDeleteConfirm = false
     @State private var showCadenceSheet = false
+    /// Set to a milestone value (7/30/100/365) when the current streak crosses
+    /// it, driving a transient celebration overlay.
+    @State private var celebration: Int?
+
+    private static let milestones: Set<Int> = [7, 30, 100, 365]
     @State private var editingIndex: Int?
     @State private var pendingDate = Date()
     /// When true, render a Monday-aligned week grid instead of the flow timeline.
@@ -180,6 +185,55 @@ struct StreakListView: View {
         .enableSwipeBack()
         .onChange(of: list) { _, newValue in
             store.update(newValue)
+        }
+        .onChange(of: stats.currentStreak) { old, new in
+            // Celebrate only when the streak grows into a milestone.
+            if new > old, Self.milestones.contains(new) {
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) { celebration = new }
+                Theme.mediumHaptic()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
+                    if celebration == new {
+                        withAnimation(.easeOut(duration: 0.25)) { celebration = nil }
+                    }
+                }
+            }
+        }
+        .overlay {
+            if let value = celebration {
+                celebrationOverlay(value)
+            }
+        }
+    }
+
+    // MARK: - Milestone celebration
+
+    private func celebrationOverlay(_ value: Int) -> some View {
+        let isWeek = cadence.period == .week
+        return VStack(spacing: Theme.spaceSM) {
+            Image(systemName: "flame.fill")
+                .font(.system(size: 40, weight: .light))
+                .foregroundStyle(Theme.ndTextDisplay.resolve(for: colorScheme))
+            Text("\(value)")
+                .font(Theme.headingFont(size: 48, weight: .medium))
+                .foregroundStyle(Theme.ndTextDisplay.resolve(for: colorScheme))
+            Text(isWeek ? "WEEK STREAK" : "DAY STREAK")
+                .font(Theme.labelFont(size: 11))
+                .tracking(11 * 0.08)
+                .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
+        }
+        .padding(Theme.space2XL)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.cornerRadius)
+                .fill(Theme.ndSurface.resolve(for: colorScheme))
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.cornerRadius)
+                        .strokeBorder(Theme.ndBorderVisible.resolve(for: colorScheme), lineWidth: 1)
+                )
+        )
+        .shadow(color: .black.opacity(0.4), radius: 20)
+        .transition(.scale(scale: 0.8).combined(with: .opacity))
+        .onTapGesture {
+            withAnimation(.easeOut(duration: 0.25)) { celebration = nil }
         }
     }
 
