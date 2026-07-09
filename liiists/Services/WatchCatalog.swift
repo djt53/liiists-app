@@ -12,6 +12,9 @@ struct WatchCatalogEntry: Codable, Identifiable, Hashable {
     let checkedCount: Int
     let items: [WatchCatalogItem]
     let modifiedDate: Date?
+    /// Populated only for `type == "streak"`. Optional so older payloads (and
+    /// non-streak lists) decode to `nil`.
+    var streak: WatchStreakInfo?
 }
 
 struct WatchCatalogItem: Codable, Identifiable, Hashable {
@@ -19,6 +22,23 @@ struct WatchCatalogItem: Codable, Identifiable, Hashable {
     let text: String
     let isChecked: Bool
     let timestamp: Date?           // populated only for log entries
+}
+
+/// A compact, watch-side projection of a streak's state. The iPhone computes
+/// everything (it owns the model + StreakStats) so the watch just renders.
+struct WatchStreakInfo: Codable, Hashable {
+    let cadenceLabel: String       // e.g. "Daily", "3x / week"
+    let currentStreak: Int
+    let periodIsWeek: Bool         // streak counted per-week vs per-day
+    let target: Int                // completions required per period (1 for daily)
+    let todayCount: Int            // filled completions logged today
+    let recent: [WatchStreakDay]   // most recent filled completions, newest-first
+}
+
+/// One recent completion in the watch streak view.
+struct WatchStreakDay: Codable, Hashable {
+    let date: Date
+    let filled: Bool
 }
 
 /// Shared App Group catalog. iPhone calls `writeCatalog` after every list

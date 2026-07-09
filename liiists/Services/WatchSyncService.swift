@@ -120,6 +120,32 @@ private extension WatchSyncService {
                 list.items.insert(entry, at: 0)
                 return true
             }
+        case .logStreakToday(let filename):
+            return applyMutation(filename: filename, store: store) { list in
+                guard list.type == .streak else { return false }
+                let cadence = list.streakCadence ?? .daily
+                let today = Date()
+                // Single-target cadences (daily / weekdays) toggle today on and
+                // off; count-based cadences (X/day, X/week) add one completion
+                // per tap toward the period target — mirroring the iPhone's
+                // add-button semantics.
+                if cadence.target == 1, list.isStreakDayLogged(today) {
+                    list.setStreakDay(today, filled: false)
+                } else {
+                    list.addStreakEntry(today)
+                }
+                return true
+            }
+        case .unlogStreakToday(let filename):
+            return applyMutation(filename: filename, store: store) { list in
+                guard list.type == .streak else { return false }
+                let cal = Calendar.current
+                guard let idx = list.streakEntries.lastIndex(where: {
+                    $0.filled && cal.isDateInToday($0.date)
+                }) else { return false }
+                list.removeStreakEntry(at: idx)
+                return true
+            }
         }
     }
 

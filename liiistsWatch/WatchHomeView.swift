@@ -115,6 +115,11 @@ private struct Row: View {
                 return latest
             }
             return "\(entry.itemCount) entries"
+        case "streak":
+            let n = entry.streak?.currentStreak ?? 0
+            let unit = entry.streak?.periodIsWeek == true ? "week" : "day"
+            if n == 0 { return "No streak yet" }
+            return "\(n) \(unit)\(n == 1 ? "" : "s")"
         default:
             return "\(entry.itemCount) items"
         }

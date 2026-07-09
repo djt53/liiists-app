@@ -184,8 +184,6 @@ struct HomeView: View {
                         showNewList = false
                     }
                 )
-                .presentationDetents(newListType == .streak ? [.large] : [.medium])
-                .presentationDragIndicator(.visible)
             }
         }
     }
@@ -482,6 +480,15 @@ struct ListRow: View {
 
 // MARK: - New List Sheet
 
+/// Reports the natural height of the New List sheet's content so the sheet can
+/// use a content-fitted `.height()` detent instead of coarse system detents.
+private struct SheetContentHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 struct NewListSheet: View {
     @Binding var title: String
     @Binding var listType: ItemList.ListType
@@ -490,12 +497,18 @@ struct NewListSheet: View {
     var onCancel: () -> Void
     @Environment(\.colorScheme) private var colorScheme
     @FocusState private var isFocused: Bool
+    // Fitted-height detent: the sheet opens only as tall as its content needs,
+    // and grows smoothly to fit the cadence picker when STREAK is selected —
+    // instead of hard-switching between .medium and .large. Seeded near the
+    // list-form height so the first frame doesn't jump.
+    @State private var contentHeight: CGFloat = 360
 
     private var isValid: Bool {
         !title.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
     var body: some View {
+        ScrollView {
         VStack(alignment: .leading, spacing: 0) {
             // Header bar
             HStack {
@@ -599,11 +612,28 @@ struct NewListSheet: View {
                 CadencePicker(cadence: $cadence)
                     .padding(.horizontal, Theme.spaceMD)
             }
-
-            Spacer()
         }
+        .padding(.bottom, Theme.space2XL)
+        .background(
+            GeometryReader { proxy in
+                Color.clear.preference(
+                    key: SheetContentHeightKey.self,
+                    value: proxy.size.height
+                )
+            }
+        )
+        }
+        .scrollBounceBehavior(.basedOnSize)
         .background(Theme.ndSurface.resolve(for: colorScheme))
         .onAppear { isFocused = true }
+        .onPreferenceChange(SheetContentHeightKey.self) { newHeight in
+            guard newHeight > 0 else { return }
+            withAnimation(.easeOut(duration: Theme.microDuration)) {
+                contentHeight = newHeight
+            }
+        }
+        .presentationDetents([.height(contentHeight)])
+        .presentationDragIndicator(.visible)
     }
 
     private func segmentButton(label: String, icon: String, type: ItemList.ListType) -> some View {

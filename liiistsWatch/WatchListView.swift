@@ -8,6 +8,8 @@ struct WatchListRouter: View {
         switch entry.type {
         case "log":
             WatchLogListView(entry: entry)
+        case "streak":
+            WatchStreakView(entry: entry)
         case "checklist":
             WatchListView(entry: entry, isChecklist: true)
         default:

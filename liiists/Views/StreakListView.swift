@@ -29,10 +29,17 @@ struct StreakListView: View {
     @State private var pendingDate = Date()
     /// When true, render a Monday-aligned week grid instead of the flow timeline.
     @AppStorage private var weekView: Bool
+    /// When true, shrink the continuous-view dots to fit every entry in the
+    /// viewport at once (a zoomed-out, bird's-eye glance). Transient — resets to
+    /// standard size on re-entry.
+    @State private var showAll = false
 
     private static let circleSize: CGFloat = 30
     private static let circleSpacing: CGFloat = 10
     private static let dateHeaderHeight: CGFloat = 12
+    /// Smallest dot the zoomed-out "show all" view will shrink to before it lets
+    /// the grid scroll again.
+    private static let minCircleSize: CGFloat = 8
 
     init(list: ItemList) {
         _list = State(initialValue: list)
@@ -106,17 +113,19 @@ struct StreakListView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            ScrollView {
-                Group {
-                    if weekView {
-                        weekGrid
-                    } else {
-                        circleGrid
+            GeometryReader { geo in
+                ScrollView {
+                    Group {
+                        if weekView {
+                            weekGrid
+                        } else {
+                            circleGrid(circleSize: continuousCircleSize(viewport: geo.size))
+                        }
                     }
+                    .padding(.horizontal, Theme.spaceMD)
+                    .padding(.top, Theme.spaceLG)
+                    .padding(.bottom, Theme.space2XL)
                 }
-                .padding(.horizontal, Theme.spaceMD)
-                .padding(.top, Theme.spaceLG)
-                .padding(.bottom, Theme.space2XL)
             }
         }
         .background(Theme.ndBlack.resolve(for: colorScheme))
@@ -322,30 +331,67 @@ struct StreakListView: View {
 
     // MARK: - Circle Grid
 
-    private var circleGrid: some View {
+    /// Spacing scales with circle size (keeps the standard 10:30 ratio) so the
+    /// zoomed-out grid stays proportional.
+    private func spacing(for size: CGFloat) -> CGFloat { max(2, size / 3) }
+
+    /// The dot size for the continuous view: standard 30pt, or — when "Show all
+    /// entries" is on — the largest size at which every cell fits the viewport
+    /// without scrolling (clamped to `minCircleSize`).
+    private func continuousCircleSize(viewport: CGSize) -> CGFloat {
+        guard showAll else { return Self.circleSize }
+        let n = cells.count
+        guard n > 0 else { return Self.circleSize }
+
+        let availW = viewport.width - Theme.spaceMD * 2
+        // Vertical budget = viewport minus the top+bottom content padding. Labels
+        // are hidden in this mode, so each row costs only (size + spacing).
+        let availH = viewport.height - Theme.spaceLG - Theme.space2XL
+        guard availW > 0, availH > 0 else { return Self.minCircleSize }
+
+        var size = Self.circleSize
+        while size > Self.minCircleSize {
+            let s = spacing(for: size)
+            let cols = max(1, Int((availW + s) / (size + s)))
+            let rows = Int(ceil(Double(n) / Double(cols)))
+            let neededH = CGFloat(rows) * (size + s) - s
+            if neededH <= availH { return size }
+            size -= 1
+        }
+        return Self.minCircleSize
+    }
+
+    private func circleGrid(circleSize: CGFloat) -> some View {
+        let gridSpacing = spacing(for: circleSize)
         let columns = [
             GridItem(
-                .adaptive(minimum: Self.circleSize, maximum: Self.circleSize),
-                spacing: Self.circleSpacing,
+                .adaptive(minimum: circleSize, maximum: circleSize),
+                spacing: gridSpacing,
                 alignment: .center
             )
         ]
-        let labelMap = dateIndicators(for: cells)
-        return LazyVGrid(columns: columns, alignment: .leading, spacing: Self.circleSpacing) {
+        // Bird's-eye "show all" mode drops the per-dot date labels for density.
+        let showLabels = !showAll
+        let labelMap = showLabels ? dateIndicators(for: cells) : [:]
+        return LazyVGrid(columns: columns, alignment: .leading, spacing: gridSpacing) {
             ForEach(Array(cells.enumerated()), id: \.offset) { i, cell in
-                VStack(spacing: 3) {
-                    if let label = labelMap[i] {
-                        Text(label)
-                            .font(Theme.labelFont(size: 8))
-                            .tracking(8 * 0.04)
-                            .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
-                            .frame(height: Self.dateHeaderHeight)
-                    } else {
-                        Color.clear.frame(height: Self.dateHeaderHeight)
+                if showLabels {
+                    VStack(spacing: 3) {
+                        if let label = labelMap[i] {
+                            Text(label)
+                                .font(Theme.labelFont(size: 8))
+                                .tracking(8 * 0.04)
+                                .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                                .frame(height: Self.dateHeaderHeight)
+                        } else {
+                            Color.clear.frame(height: Self.dateHeaderHeight)
+                        }
+                        circle(for: cell, size: circleSize)
                     }
-                    circle(for: cell)
+                } else {
+                    circle(for: cell, size: circleSize)
                 }
             }
         }
@@ -392,7 +438,7 @@ struct StreakListView: View {
     }
 
     @ViewBuilder
-    private func circle(for cell: StreakCell) -> some View {
+    private func circle(for cell: StreakCell, size: CGFloat = Self.circleSize) -> some View {
         switch cell {
         case .add:
             // Persistent leading tap-target — always logs today.
@@ -404,7 +450,8 @@ struct StreakListView: View {
                 circleShape(
                     fill: .clear,
                     stroke: Theme.ndTextDisplay.resolve(for: colorScheme),
-                    lineWidth: 1.5
+                    lineWidth: 1.5,
+                    size: size
                 )
             }
             .buttonStyle(.plain)
@@ -431,7 +478,8 @@ struct StreakListView: View {
                 circleShape(
                     fill: entry.filled ? Theme.ndTextDisplay.resolve(for: colorScheme) : .clear,
                     stroke: entry.filled ? .clear : Theme.ndTextDisplay.resolve(for: colorScheme),
-                    lineWidth: entry.filled ? 0 : 1
+                    lineWidth: entry.filled ? 0 : 1,
+                    size: size
                 )
             }
             .buttonStyle(.plain)
@@ -462,7 +510,8 @@ struct StreakListView: View {
                 circleShape(
                     fill: .clear,
                     stroke: Theme.ndTextDisplay.resolve(for: colorScheme),
-                    lineWidth: 1
+                    lineWidth: 1,
+                    size: size
                 )
             }
             .buttonStyle(.plain)
@@ -480,12 +529,17 @@ struct StreakListView: View {
         }
     }
 
-    private func circleShape(fill: Color, stroke: Color, lineWidth: CGFloat) -> some View {
+    private func circleShape(
+        fill: Color,
+        stroke: Color,
+        lineWidth: CGFloat,
+        size: CGFloat = Self.circleSize
+    ) -> some View {
         ZStack {
             Circle().fill(fill)
             Circle().strokeBorder(stroke, lineWidth: lineWidth)
         }
-        .frame(width: Self.circleSize, height: Self.circleSize)
+        .frame(width: size, height: size)
     }
 
     /// Filled completions on `date` — the numerator for X-per-day partial fills.
@@ -737,6 +791,18 @@ struct StreakListView: View {
                     weekView ? "Continuous view" : "Sort by week",
                     systemImage: weekView ? "square.grid.3x1.below.line.grid.1x2" : "calendar"
                 )
+            }
+            if !weekView {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.28)) { showAll.toggle() }
+                } label: {
+                    Label(
+                        showAll ? "Standard size" : "Show all entries",
+                        systemImage: showAll
+                            ? "arrow.up.left.and.arrow.down.right"
+                            : "arrow.down.right.and.arrow.up.left"
+                    )
+                }
             }
             Divider()
             Button {

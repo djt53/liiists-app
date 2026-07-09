@@ -296,10 +296,35 @@ final class ListStore: ObservableObject {
                     itemCount: list.itemCount,
                     checkedCount: list.checkedCount,
                     items: Array(items),
-                    modifiedDate: list.modifiedDate
+                    modifiedDate: list.modifiedDate,
+                    streak: Self.streakInfo(for: list)
                 )
             }
         WatchCatalog.writeCatalog(Array(entries))
         WatchSyncService.shared.notifyCatalogUpdated()
+    }
+
+    /// Compact streak summary for the watch catalog — the current streak,
+    /// cadence, today's completion count, and the 5 most recent completions.
+    /// Returns `nil` for non-streak lists.
+    private static func streakInfo(for list: ItemList) -> WatchStreakInfo? {
+        guard list.type == .streak else { return nil }
+        let cadence = list.streakCadence ?? .daily
+        let filledDates = list.streakEntries.filter(\.filled).map(\.date)
+        let stats = StreakStats.compute(entries: filledDates, cadence: cadence)
+        let cal = Calendar.current
+        let todayCount = filledDates.filter { cal.isDateInToday($0) }.count
+        let recent = filledDates
+            .sorted(by: >)
+            .prefix(5)
+            .map { WatchStreakDay(date: $0, filled: true) }
+        return WatchStreakInfo(
+            cadenceLabel: cadence.displayLabel,
+            currentStreak: stats.currentStreak,
+            periodIsWeek: cadence.period == .week,
+            target: cadence.target,
+            todayCount: todayCount,
+            recent: Array(recent)
+        )
     }
 }

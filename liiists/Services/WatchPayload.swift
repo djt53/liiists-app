@@ -14,10 +14,20 @@ enum WatchPayload {
     /// at the time of receipt.
     case appendLogEntry(filename: String, text: String)
 
+    /// Log today on a streak list. iPhone decides the semantics per cadence:
+    /// toggle today on/off for single-target cadences (daily/weekdays), or add
+    /// one completion for count-based cadences (X/day, X/week).
+    case logStreakToday(filename: String)
+
+    /// Remove one of today's completions on a streak list (the undo path).
+    case unlogStreakToday(filename: String)
+
     private enum Kind: String {
         case addItem
         case toggleItem
         case appendLogEntry
+        case logStreakToday
+        case unlogStreakToday
     }
 
     var dictionary: [String: Any] {
@@ -28,6 +38,10 @@ enum WatchPayload {
             return [Key.kind: Kind.toggleItem.rawValue, Key.filename: filename, Key.itemID: itemID.uuidString]
         case .appendLogEntry(let filename, let text):
             return [Key.kind: Kind.appendLogEntry.rawValue, Key.filename: filename, Key.text: text]
+        case .logStreakToday(let filename):
+            return [Key.kind: Kind.logStreakToday.rawValue, Key.filename: filename]
+        case .unlogStreakToday(let filename):
+            return [Key.kind: Kind.unlogStreakToday.rawValue, Key.filename: filename]
         }
     }
 
@@ -46,6 +60,10 @@ enum WatchPayload {
         case .appendLogEntry:
             guard let text = message[Key.text] as? String else { return nil }
             self = .appendLogEntry(filename: filename, text: text)
+        case .logStreakToday:
+            self = .logStreakToday(filename: filename)
+        case .unlogStreakToday:
+            self = .unlogStreakToday(filename: filename)
         }
     }
 
