@@ -183,24 +183,87 @@ struct StreakListView: View {
         }
     }
 
+    // MARK: - Stats
+
+    private var cadence: StreakCadence { list.streakCadence ?? .daily }
+
+    private var stats: StreakStatsResult {
+        StreakStats.compute(
+            entries: list.streakEntries.filter(\.filled).map(\.date),
+            cadence: cadence
+        )
+    }
+
+    /// Filled completions logged today — the current-period numerator for
+    /// day-based cadences.
+    private var todayCount: Int {
+        let cal = Calendar.current
+        return list.streakEntries.filter { $0.filled && cal.isDateInToday($0.date) }.count
+    }
+
     // MARK: - Header
 
     private var header: some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 2) {
+        let s = stats
+        let isWeek = cadence.period == .week
+        return VStack(alignment: .leading, spacing: Theme.spaceMD) {
+            HStack(alignment: .top) {
                 Text(list.title)
                     .font(Theme.headingFont(size: Theme.headingSize, weight: .medium))
                     .foregroundStyle(Theme.ndTextDisplay.resolve(for: colorScheme))
                     .tracking(-0.01 * Theme.headingSize)
-                Text("\(list.streakLoggedCount) LOGGED")
-                    .nothingLabel(color: Theme.ndTextSecondary.resolve(for: colorScheme))
+                Spacer()
+                overflowMenu
             }
-            Spacer()
-            overflowMenu
+
+            HStack(alignment: .firstTextBaseline, spacing: Theme.spaceLG) {
+                statCell(value: s.currentStreak, label: isWeek ? "WEEK STREAK" : "DAY STREAK")
+                statCell(value: s.longestStreak, label: "LONGEST")
+                statCell(value: s.totalCompletions, label: "LOGGED")
+                Spacer()
+                if cadence.target > 1 {
+                    periodProgress(
+                        count: isWeek ? s.thisWeekCount : todayCount,
+                        target: cadence.target,
+                        label: isWeek ? "THIS WEEK" : "TODAY"
+                    )
+                }
+            }
         }
         .padding(.horizontal, Theme.spaceMD)
         .padding(.top, Theme.spaceLG)
         .padding(.bottom, Theme.spaceMD)
+    }
+
+    private func statCell(value: Int, label: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text("\(value)")
+                .font(Theme.headingFont(size: 22, weight: .medium))
+                .foregroundStyle(Theme.ndTextDisplay.resolve(for: colorScheme))
+                .contentTransition(.numericText())
+            Text(label)
+                .font(Theme.labelFont(size: 8))
+                .tracking(8 * 0.04)
+                .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
+        }
+    }
+
+    /// Compact current-period progress: "2/3" over a small label.
+    private func periodProgress(count: Int, target: Int, label: String) -> some View {
+        VStack(alignment: .trailing, spacing: 1) {
+            Text("\(min(count, target))/\(target)")
+                .font(Theme.headingFont(size: 22, weight: .medium))
+                .foregroundStyle(
+                    count >= target
+                        ? Theme.ndTextDisplay.resolve(for: colorScheme)
+                        : Theme.ndTextSecondary.resolve(for: colorScheme)
+                )
+                .contentTransition(.numericText())
+            Text(label)
+                .font(Theme.labelFont(size: 8))
+                .tracking(8 * 0.04)
+                .foregroundStyle(Theme.ndTextSecondary.resolve(for: colorScheme))
+        }
     }
 
     // MARK: - Circle Grid
@@ -371,6 +434,45 @@ struct StreakListView: View {
         .frame(width: Self.circleSize, height: Self.circleSize)
     }
 
+    /// Filled completions on `date` — the numerator for X-per-day partial fills.
+    private func dayCompletionCount(_ date: Date) -> Int {
+        let cal = Calendar.current
+        return list.streakEntries.filter { $0.filled && cal.isDate($0.date, inSameDayAs: date) }.count
+    }
+
+    /// Removes a single filled completion on `date` (the "remove one" path for
+    /// count-based cadences in the week grid).
+    private func removeOneCompletion(on date: Date) {
+        let cal = Calendar.current
+        if let idx = list.streakEntries.lastIndex(where: {
+            $0.filled && cal.isDate($0.date, inSameDayAs: date)
+        }) {
+            list.removeStreakEntry(at: idx)
+        }
+    }
+
+    /// A dot that fills proportionally toward `target` — solid once met. Used in
+    /// the week grid for count-based cadences (X/day) so a 2-of-3 day reads as
+    /// two-thirds of an arc rather than a binary on/off.
+    private func progressCircle(count: Int, target: Int, isToday: Bool) -> some View {
+        let fraction = target > 0 ? min(1, Double(count) / Double(target)) : 0
+        let met = count >= target
+        let accent = Theme.ndTextDisplay.resolve(for: colorScheme)
+        return ZStack {
+            if met {
+                Circle().fill(accent)
+            } else {
+                Circle().strokeBorder(accent.opacity(0.25), lineWidth: isToday ? 1.5 : 1)
+                Circle()
+                    .trim(from: 0, to: fraction)
+                    .stroke(accent, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .padding(1.5)
+            }
+        }
+        .frame(width: Self.circleSize, height: Self.circleSize)
+    }
+
     // MARK: - Week grid (Monday-aligned)
 
     /// One cell in the week grid — a real day, or a blank spacer for days
@@ -481,30 +583,64 @@ struct StreakListView: View {
             Color.clear.frame(width: Self.circleSize, height: Self.circleSize)
 
         case let .day(date):
-            let logged = list.isStreakDayLogged(date)
             let isToday = Calendar.current.isDateInToday(date)
-            Button {
-                list.setStreakDay(date, filled: !logged)
-                logged ? Theme.lightHaptic() : Theme.mediumHaptic()
-                if !logged { Analytics.streakLogged(listTitle: list.title) }
-            } label: {
-                circleShape(
-                    fill: logged ? Theme.ndTextDisplay.resolve(for: colorScheme) : .clear,
-                    stroke: logged ? .clear : Theme.ndTextDisplay.resolve(for: colorScheme),
-                    lineWidth: logged ? 0 : (isToday ? 1.5 : 1)
-                )
-            }
-            .buttonStyle(.plain)
-            .contextMenu {
-                Section(Self.dateLabel(for: date)) {
-                    Button {
-                        list.setStreakDay(date, filled: !logged)
-                        logged ? Theme.lightHaptic() : Theme.mediumHaptic()
-                    } label: {
-                        Label(
-                            logged ? "Unmark" : "Mark done",
-                            systemImage: logged ? "circle" : "checkmark.circle"
-                        )
+            let target = cadence.target
+            if target > 1 {
+                // Count-based cadence: tap adds one completion toward the target;
+                // the dot fills proportionally.
+                let count = dayCompletionCount(date)
+                Button {
+                    list.addStreakEntry(date)
+                    Theme.mediumHaptic()
+                    Analytics.streakLogged(listTitle: list.title)
+                } label: {
+                    progressCircle(count: count, target: target, isToday: isToday)
+                }
+                .buttonStyle(.plain)
+                .contextMenu {
+                    Section(Self.dateLabel(for: date)) {
+                        Text("\(count)/\(target) logged")
+                        Button {
+                            list.addStreakEntry(date)
+                            Theme.mediumHaptic()
+                            Analytics.streakLogged(listTitle: list.title)
+                        } label: {
+                            Label("Add one", systemImage: "plus.circle")
+                        }
+                        Button(role: .destructive) {
+                            removeOneCompletion(on: date)
+                            Theme.lightHaptic()
+                        } label: {
+                            Label("Remove one", systemImage: "minus.circle")
+                        }
+                        .disabled(count == 0)
+                    }
+                }
+            } else {
+                let logged = list.isStreakDayLogged(date)
+                Button {
+                    list.setStreakDay(date, filled: !logged)
+                    logged ? Theme.lightHaptic() : Theme.mediumHaptic()
+                    if !logged { Analytics.streakLogged(listTitle: list.title) }
+                } label: {
+                    circleShape(
+                        fill: logged ? Theme.ndTextDisplay.resolve(for: colorScheme) : .clear,
+                        stroke: logged ? .clear : Theme.ndTextDisplay.resolve(for: colorScheme),
+                        lineWidth: logged ? 0 : (isToday ? 1.5 : 1)
+                    )
+                }
+                .buttonStyle(.plain)
+                .contextMenu {
+                    Section(Self.dateLabel(for: date)) {
+                        Button {
+                            list.setStreakDay(date, filled: !logged)
+                            logged ? Theme.lightHaptic() : Theme.mediumHaptic()
+                        } label: {
+                            Label(
+                                logged ? "Unmark" : "Mark done",
+                                systemImage: logged ? "circle" : "checkmark.circle"
+                            )
+                        }
                     }
                 }
             }
