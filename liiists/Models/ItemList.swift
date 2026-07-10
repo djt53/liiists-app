@@ -176,6 +176,17 @@ enum StreakCadence: Equatable {
         }
     }
 
+    /// Completions a *single day* expects — what the "log today" control fills
+    /// toward. Only `timesPerDay(n)` wants multiple logs in one day; weekly
+    /// cadences spread their target across the week, so any given day is binary
+    /// (one tap = logged today). Distinct from `target`, which is per-period.
+    var dailyTarget: Int {
+        switch self {
+        case .daily, .weekdays, .timesPerWeek: return 1
+        case .timesPerDay(let n): return max(1, n)
+        }
+    }
+
     /// Parse from markdown string: "daily", "weekdays", "N/day", "N/week".
     /// Legacy "3/week" still parses. "1/day" normalizes to `.daily`.
     static func from(_ string: String) -> StreakCadence {

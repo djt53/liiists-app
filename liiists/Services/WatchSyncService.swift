@@ -125,11 +125,11 @@ private extension WatchSyncService {
                 guard list.type == .streak else { return false }
                 let cadence = list.streakCadence ?? .daily
                 let today = Date()
-                // Single-target cadences (daily / weekdays) toggle today on and
-                // off; count-based cadences (X/day, X/week) add one completion
-                // per tap toward the period target — mirroring the iPhone's
-                // add-button semantics.
-                if cadence.target == 1, list.isStreakDayLogged(today) {
+                // Binary-per-day cadences (daily / weekdays / X-a-week) toggle
+                // today on and off — one tap means "logged today". Only X/day
+                // accumulates multiple completions in a single day, so it adds
+                // one per tap toward the daily target.
+                if cadence.dailyTarget == 1, list.isStreakDayLogged(today) {
                     list.setStreakDay(today, filled: false)
                 } else {
                     list.addStreakEntry(today)

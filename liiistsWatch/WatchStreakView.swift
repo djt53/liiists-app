@@ -22,7 +22,13 @@ struct WatchStreakView: View {
 
     private var streak: WatchStreakInfo? { current.streak }
 
-    private var target: Int { max(1, streak?.target ?? 1) }
+    /// The target for *today's* circle. Weekly cadences (e.g. 3x / week) carry a
+    /// per-*period* target of 3, but any single day is binary — one tap logs
+    /// today — so the "log today" control fills toward 1, not the weekly budget.
+    /// Only X-a-day cadences want a partial daily arc (2 of 3 today).
+    private var target: Int {
+        streak?.periodIsWeek == true ? 1 : max(1, streak?.target ?? 1)
+    }
 
     /// Completions logged today, honoring any pending optimistic tap.
     private var todayCount: Int {

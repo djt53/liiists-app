@@ -726,7 +726,7 @@ struct StreakListView: View {
             // (X/day). Weekly cadences measure per week, so a single day-dot is
             // binary (did you log that day) — otherwise every logged day would
             // render a partial N-of-week arc.
-            let target = cadence.period == .day ? cadence.target : 1
+            let target = cadence.dailyTarget
             if target > 1 {
                 // Count-based cadence: tap adds one completion toward the target;
                 // the dot fills proportionally.
